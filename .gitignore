@@ -1,0 +1,4 @@
+.ecmwfapirc
+*.txt
+*.req
+*.pyc
