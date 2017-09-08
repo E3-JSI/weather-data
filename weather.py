@@ -4,7 +4,7 @@
 ECMWF MARS archive access code.
 """
 
-# import pdb
+import pdb
 import ecmwfapi
 
 from datetime import date
@@ -32,8 +32,8 @@ class EcmwfServer():
         self.service = ecmwfapi.ECMWFService('mars')
 
 
-    def list(self, request):
-        """Test the request and report a summary of statistics about the requested data."""
+    def _check_request(self, request):
+        """Test if request is ok for execution."""
         # request has to be complete
         if not request.is_complete():
             missing = [
@@ -42,18 +42,28 @@ class EcmwfServer():
                 if param not in request.params]
             raise RuntimeError("Request has to be complete. Missing: %s" % ', '.join(missing))
 
-        target = request.target
+
+    def _check_target(self, target):
+        """Check if target file is ok."""
         # try to create the file in order to avoid costly queries that fail in the end
         try:
             open(target, 'a').close()
         except IOError as err:
             raise IOError("Problem creating request target file: " + err.args[1])
 
+
+    def list(self, request):
+        """Test the request and report a summary of statistics about the requested data."""
+        self._check_request(request)
+
+        target = request.target
+        self._check_target(target)
+
         # build the request string
         req_str = "list,output=cost," + request.to_req_str()
 
         # execute the request
-        #print "QUERYING WITH:", req_str
+        # print "QUERYING WITH:", req_str
         self.service.execute(req_str, target)
 
         # print the stats
@@ -68,7 +78,12 @@ class WeatherReq():
     """A weather data request."""
 
     def __init__(self):
-        # variable parameters
+        # VARIABLE PARAMETERS
+        # ===================
+
+        # mandatory params
+        # ----------------
+
         # target:
         #   * filename where the requested data is dumped
         self.target = None
@@ -90,7 +105,22 @@ class WeatherReq():
         #   * step 0 is current weather state, step X is the forecasted weather state in X hours
         self.step = None
 
-        # fixed parameters
+
+        # optional params
+        # ----------------
+
+        # area:
+        #   * a lat/lon bounding box specifying the area for the data
+        #   * format is [north, west, south, east] or differently [maxLat, minLon, minLat, maxLon]
+        self.area = None
+
+        # grid:
+        #   * a lat/lon resolution of the data
+        #   * format is [latRes, lonRes] (e.g. [1.5, 1.5])
+        self.grid = None
+
+
+        # FIXED PARAMETERS
         self.params = {
             "class"   : "od",
             "expver"  : "1",
@@ -165,9 +195,43 @@ class WeatherReq():
         self.params['step'] = '/'.join(str(s) for s in self.step)
 
 
+    def set_area(self, area):
+        """Set the area for which you want the data. [N,W,S,E]"""
+        assert isinstance(area, (list, tuple)), "Expectiong a list or tuple"
+        assert len(area) == 4, "Expecting 4 values for area."
+        for res in area:
+            assert isinstance(res, (int, float)), "Each area value should be an int or float."
+
+        assert check_area_ranges(area), "Expecting sane area borders."
+
+        self.area = area
+        self.params['area'] = '/'.join(str(x) for x in self.area)
+
+
+    def set_grid(self, grid):
+        """Set the lat/lon grid resolution of the data."""
+        assert isinstance(grid, (list, tuple)), "Expectiong a list or tuple"
+        assert len(grid) == 2, "Expecting 2 values for grid.."
+        for res in grid:
+            assert isinstance(res, float), "Each grid resolution value should be a float."
+
+        self.grid = grid
+        latRes = ('%f' % grid[0]).rstrip('0').rstrip('.')
+        lonRes = ('%f' % grid[1]).rstrip('0').rstrip('.')
+        self.params['grid'] = '%s/%s' % (latRes, lonRes)
+
+
     def to_req_str(self):
         """Transform the request into a string expected by the ECMWF service."""
         return ','.join(["%s=%s" % (param, val) for param, val in sorted(self.params.items())])
+
+
+def check_area_ranges(area):
+    """Check if given list/tuple holds a set of sane area values."""
+    # unpack values
+    N, W, S, E = area
+    # check ranges and ordering
+    return -90 <= S < N <= 90  and -180 <= W < E <= 180
 
 
 def main():
@@ -178,9 +242,14 @@ def main():
     test_req.set_date(date(2016, 9, 17))
     test_req.set_noon()
     test_req.set_step([0])
+    # Slovenia: North Latitude: 46.876659 South Latitude: 45.421836 East Longitude: 16.610704 West Longitude: 13.375336
+    test_req.set_area([47, 13, 45, 17])
+    test_req.set_grid([0.25, 0.25])
     serv = EcmwfServer()
 
     serv.list(test_req)
+
+    pdb.set_trace()
 
 
 if __name__ == '__main__':
