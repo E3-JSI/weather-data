@@ -73,6 +73,20 @@ class EcmwfServer():
             print "===================="
 
 
+    def retrieve(self, request):
+        """Test the request and report a summary of statistics about the requested data."""
+        self._check_request(request)
+
+        target = request.target
+        self._check_target(target)
+
+        # build the request string
+        req_str = "retreive," + request.to_req_str()
+
+        # execute the request
+        # print "QUERYING WITH:", req_str
+        self.service.execute(req_str, target)
+
 
 class WeatherReq():
     """A weather data request."""
@@ -247,7 +261,9 @@ def main():
     test_req.set_grid([0.25, 0.25])
     serv = EcmwfServer()
 
-    serv.list(test_req)
+    #serv.list(test_req)
+
+    serv.retrieve(test_req)
 
     pdb.set_trace()
 
