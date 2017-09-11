@@ -139,7 +139,7 @@ class WeatherReq():
             "class"   : "od",
             "expver"  : "1",
             "levtype" : "sfc",
-            "param"   : "167.128",
+            "param"   : "20.3/23.228/121.128/122.128/123.128/134.128/137.128/141.128/144.128/164.128/167.128/224.228/225.228/228.128/260015",
             "stream"  : "oper",
             "type"    : "fc"}
 
@@ -251,67 +251,6 @@ def check_area_ranges(area):
 def main():
     print "ECMWF access code"
 
-    test_req = WeatherReq()
-    test_req.set_target('TEST.txt')
-    test_req.set_date(date(2016, 9, 17))
-    test_req.set_noon()
-    test_req.set_step([0])
-    # Slovenia: North Latitude: 46.876659 South Latitude: 45.421836 East Longitude: 16.610704 West Longitude: 13.375336
-    test_req.set_area([47, 13, 45, 17])
-    test_req.set_grid([0.25, 0.25])
-    serv = EcmwfServer()
-
-    #serv.list(test_req)
-
-    serv.retrieve(test_req)
-
-    pdb.set_trace()
-
 
 if __name__ == '__main__':
     main()
-
-
-# EXAMPLE QUERIES:
-# query = (
-#     {"list" : {
-#         "class"     : "od",
-#         "type"      : "an",
-#         "expver"    : "1",
-#         "stream"    : "kwbc",
-#         "date"      : "19990222",
-#         "time"      : "0000/1200",
-#         "levtype"   : "pl",
-#         "levelist"  : "1000/850/500",
-#         "param"     : "129/130"
-#     }},
-#     "TEST_TARGET.grib")
-
-# query = (
-#     {
-#         "class"   : "od",
-#         "date"    : "2017-06-29",
-#         "expver"  : "1",
-#         "levtype" : "sfc",
-#         "param"   : "167.128",
-#         "step"    : "0",
-#         "stream"  : "oper",
-#         "time"    : "12:00:00",
-#         "type"    : "fc",
-#     },
-#     "TEST_TARGET.grib")
-
-
-# server.retrieve({
-#     'stream'    : "oper",
-#     'levtype'   : "sfc",
-#     'param'     : "167.128",
-#     'repres'    : "gg",
-#     'step'      : "0",
-#     'time'      : "12",
-#     'date'      : "1986-08-01/to/1986-08-31",
-#     'dataset'   : "era15",
-#     'type'      : "an",
-#     'class'     : "er",
-#     'target'    : "era15_1986-08-01to1986-08-31_12.grib"
-# })
