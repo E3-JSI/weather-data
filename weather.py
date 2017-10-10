@@ -6,6 +6,7 @@ ECMWF MARS archive access code.
 
 import pdb
 import ecmwfapi
+import pygrib
 
 from datetime import date
 
@@ -20,6 +21,37 @@ ALLOWED_STEPS = set(range(0, 90) + range(90, 144, 3) + range(144, 246, 6))
 #     server = ecmwfapi.ECMWFDataServer()
 #     return server
 
+class Area: Slovenia=[46.53, 13.23, 45.25, 16.36]
+
+class Weather:
+
+    def __init__(self):
+        self.server = EcmwfServer()
+    
+    def get_forecast(self, dateFrom=None, dateTo=None, time='noon', area='slovenia', step=None, target=None):
+        """ Get weather forcast for given parameters """
+        assert not (dateFrom is None)
+        assert time in ['midnight', 'noon']
+        assert not (target is None)
+
+        req = WeatherReq()
+        req.set_date(dateFrom, end_date=dateTo)
+
+        if time == 'noon':
+            req.set_noon()
+        else:
+            req.set_midnight()
+
+        if area == 'slovenia':
+            area = Area.Slovenia
+        req.set_area(area)
+        
+        req.set_step(step)
+        req.set_grid((0.25, 0.25)) 
+        req.set_target(target)
+
+        self.server.retrieve(req)
+        return pygrib.open(target)
 
 class EcmwfServer():
     """
@@ -130,7 +162,7 @@ class WeatherReq():
 
         # grid:
         #   * a lat/lon resolution of the data
-        #   * format is [latRes, lonRes] (e.g. [1.5, 1.5])
+        #   * format is [latRes, lonRes] (e.g. [1.5, 1.5])  
         self.grid = None
 
 
