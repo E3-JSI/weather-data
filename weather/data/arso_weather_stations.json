@@ -1,0 +1,114 @@
+[
+  {
+    "lat": 45.8958, 
+    "alt": 55.0, 
+    "lon": 13.6289, 
+    "shortTitle": "BILJE", 
+    "title": "NOVA GORICA"
+  }, 
+  {
+    "lat": 46.2447, 
+    "alt": 244.0, 
+    "lon": 15.2525, 
+    "shortTitle": "CELJE", 
+    "title": "CELJE"
+  }, 
+  {
+    "lat": 45.5603, 
+    "alt": 157.0, 
+    "lon": 15.1508, 
+    "shortTitle": "\u010cRNOMELJ - DOBLI\u010cE", 
+    "title": "CRNOMELJ"
+  }, 
+  {
+    "lat": 46.3794, 
+    "alt": 2514.0, 
+    "lon": 13.8539, 
+    "shortTitle": "KREDARICA", 
+    "title": "KREDARICA"
+  }, 
+  {
+    "lat": 45.8936, 
+    "alt": 154.0, 
+    "lon": 15.525, 
+    "shortTitle": "CERKLJE - LETALI\u0160\u010cE", 
+    "title": "CERKLJE - LETALISCE"
+  }, 
+  {
+    "lat": 46.48, 
+    "alt": 264.0, 
+    "lon": 15.6869, 
+    "shortTitle": "MARIBOR - LETALI\u0160\u010cE", 
+    "title": "MARIBOR/SLIVNICA"
+  }, 
+  {
+    "lat": 46.2178, 
+    "alt": 364.0, 
+    "lon": 14.4775, 
+    "shortTitle": "BRNIK - LETALI\u0160\u010cE", 
+    "title": "LJUBLJANA/BRNIK"
+  }, 
+  {
+    "lat": 46.37, 
+    "alt": 515.0, 
+    "lon": 14.18, 
+    "shortTitle": "LESCE", 
+    "title": "LESCE"
+  }, 
+  {
+    "lat": 45.4756, 
+    "alt": 2.0, 
+    "lon": 13.6206, 
+    "shortTitle": "PORTORO\u017d - LETALI\u0160\u010cE", 
+    "title": "PORTOROZ/SECOVLJE"
+  }, 
+  {
+    "lat": 46.0681, 
+    "alt": 943.0, 
+    "lon": 15.2897, 
+    "shortTitle": "LISCA", 
+    "title": "LISCA"
+  }, 
+  {
+    "lat": 46.0658, 
+    "alt": 299.0, 
+    "lon": 14.5172, 
+    "shortTitle": "LJUBLJANA - BE\u017dIGRAD", 
+    "title": "LJUBLJANA/BEZIGRAD"
+  }, 
+  {
+    "lat": 46.6525, 
+    "alt": 188.0, 
+    "lon": 16.1961, 
+    "shortTitle": "MURSKA SOBOTA - RAKI\u010cAN", 
+    "title": "MURSKA SOBOTA"
+  }, 
+  {
+    "lat": 45.8019, 
+    "alt": 220.0, 
+    "lon": 15.1822, 
+    "shortTitle": "NOVO MESTO", 
+    "title": "NOVO MESTO"
+  }, 
+  {
+    "lat": 45.7664, 
+    "alt": 533.0, 
+    "lon": 14.1975, 
+    "shortTitle": "POSTOJNA", 
+    "title": "POSTOJNA"
+  }, 
+  {
+    "lat": 46.4975, 
+    "alt": 864.0, 
+    "lon": 13.7175, 
+    "shortTitle": "RATE\u010cE - PLANICA", 
+    "title": "RATECE"
+  }, 
+  {
+    "lat": 46.49, 
+    "alt": 455.0, 
+    "lon": 15.1161, 
+    "shortTitle": "\u0160MARTNO PRI SLOVENJ GRADCU", 
+    "title": "SLOVENJ GRADEC"
+  }
+]
