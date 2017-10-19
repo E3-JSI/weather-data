@@ -3,18 +3,17 @@ from datetime import date
 from weather.weather import WeatherExtractor, WeatherApi
 
 # download data - use default parameters
-#wa = WeatherApi()
-#wa.get(from_date=date(2015, 1, 1), to_date=date(
-#    2015, 1, 31), target='jan2015-feb2015.grib')
+wa = WeatherApi()
+wa.get(from_date=date(2015, 1, 1), to_date=date(
+    2015, 1, 31), target='jan2015.grib')
 
 # query the downloaded data
 we = WeatherExtractor()
-we.load('jan2015-feb2015.grib')
-
+we.load('jan2015.grib')
 
 # get actual weather on 2015-1-10, 2015-1-11 and 2015-1-12
 weather_result = we.get_actual(from_date=date(
-    2015, 1, 10), to_date=date(2015, 1, 12), aggby='week')
+    2015, 1, 10), to_date=date(2015, 1, 12), aggby='hour')
 lats, lons = weather_result.get_latslons()
 
 # print results
