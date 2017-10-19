@@ -10,7 +10,7 @@ Example:
     Examples of class usages are given in class docstring.
 
 Todo:
-    * read interpolation points from file
+    * various fixes in WeatherExtractor._aggregate_points
 """
 import datetime
 import json
@@ -91,25 +91,25 @@ class WeatherExtractor:
 
         Queries about actual weather have the following format:
 
-            $ wa.get_actual(from_date, to_date, aggby)
+            $ wa.get_actual(from_date, to_date, aggtime)
 
             Where:
                 from_date, to_date: time window in days
-                aggby: aggregation of weather data on different levels:
-                    aggby='hour': aggregate by hour
-                    aggby='day': aggregation by day
-                    aggby='week': aggregation by week
+                aggtime: aggregation of weather data on different levels:
+                    aggtime='hour': aggregate by hour
+                    aggtime='day': aggregation by day
+                    aggtime='week': aggregation by week
 
         Queries about forecasted weather have the following format:
 
-            $ wa.get_forecast(from_date, n_days, aggby)
+            $ wa.get_forecast(from_date, n_days, aggtime)
 
             Where:
                 from_date, to_date: time window in days
-                aggby: aggregation of weather data on different levels:
-                    aggby='hour': aggregate by hour
-                    aggby='day': aggregation by day
-                    aggby='week': aggregation by week
+                aggtime: aggregation of weather data on different levels:
+                    aggtime='hour': aggregate by hour
+                    aggtime='day': aggregation by day
+                    aggtime='week': aggregation by week
 
         > we.get_forecast(fromDate=date(2017,3,12), nDays=5, timeOfDay=[6,9,12,15,18], groupby=['hour'/'day'/'week'])
     """
@@ -207,14 +207,16 @@ class WeatherExtractor:
                 values: 
         """
 
-        def __init__(self, daterange, aggby):
+        def __init__(self, daterange, aggtime='hour', aggloc='grid'):
             """
             Args:
                 daterange ( tuple(datetime.date, datetime.date) ): time window of weather measurements
-                aggby (str): measurements aggregation (i.e. 'hour', 'day', 'week', ...)
+                aggtime (str): measurements aggregation over time (i.e. 'hour', 'day', 'week', ...)
+                aggloc (str): points aggregation 
             """
             self.daterange = daterange
-            self.aggby = aggby
+            self.aggtime = aggtime
+            self.aggloc = aggloc
 
             self.lats, self.lons = None, None
 
@@ -223,23 +225,25 @@ class WeatherExtractor:
             self.measure_values = []
             self.measure_params = []
 
+        @classmethod
+        def from_existing(cls, obj):
+            n_obj = cls(obj.daterange, aggtime=obj.aggtime, aggloc=obj.aggloc)
+            n_obj._set_latlons(*obj.get_latslons())
+            return n_obj
+
         def __iter__(self):
-            for i in xrange(self._n_values()):
+            for i in xrange(len(self)):
                 yield self.measure_datetimeranges[i], self.measure_params[i], self.measure_values[i]
 
         def __getitem__(self, key):
             return self.measure_datetimeranges[key], self.measure_params[key], self.measure_values[key]
 
         def __len__(self):
-            return self._n_values()
+            return len(self.measure_values)
 
         def _set_latlons(self, lats, lons):
             self.lats = np.copy(lats)
             self.lons = np.copy(lons)
-
-        def _n_values(self):
-            """ Get number of weather measurements. """
-            return len(self.measure_values)
 
         def get_latslons(self):
             """ Get lattitudes and longtitudes of weather measurement points """
@@ -269,15 +273,15 @@ class WeatherExtractor:
             self.measure_params.append(param)
             self.measure_values.append(values)
 
-    def _aggregate_points(self, weather_result, target_lats, target_lons, aggr='one'):
+    def _aggregate_points(self, weather_result, aggloc, aggtype='one'):
         """
         Do an interpolation of measurement values for target points (given with target_lats and target_lons)
         from weather_result points.
 
         Args:
             weather_result (:obj:WeatherResult): weather result object containing original measurements and points
-            target_lats, target_lons (np.array(dtype=float)): lattitudes and longtitudes of target points (interpolated)
-            aggr (str): aggregation level, which can be one of the following:
+            aggloc (str): aggregation level
+            aggtype (str): aggregation type, can be one of the following:
 
                 'one' - keep only the value of a grid point which is closest to the target point
                 'mean' - calculate the mean value of all grid points closest to the target point
@@ -288,14 +292,22 @@ class WeatherExtractor:
         Returns:
             WeatherResult: resulting object with interpolated points
         """
-        assert aggr in ['one', 'mean']
+        assert aggloc in ['grid', 'region', 'country']
+        assert aggtype in ['one', 'mean']
 
         lats, lons = weather_result.get_latslons()
 
-        if aggr == 'one':
+        if aggloc == 'grid':  # no aggregation
+            return weather_result
+        elif aggloc == 'region':  # weather station aggregation - fix this
+            target_lats, target_lons = self.interp_points[0], self.interp_points[1]
+        elif aggloc == 'country':  # center of slovenia
+            target_lats, target_lons = np.array([46.1512]), np.array([14.9955])
+
+        if aggtype == 'one':
             # each target point has only one closest grid point
             closest = self._calc_closest(target_lats, target_lons, lats, lons)
-        elif aggr == 'mean':
+        elif aggtype == 'mean':
             # each grid point has only one closest target point
             closest = self._calc_closest(lats, lons, target_lats, target_lons)
 
@@ -303,17 +315,16 @@ class WeatherExtractor:
         num_targets = target_lats.shape[0]
 
         # create new weather object
-        result = self.WeatherResult(
-            weather_result.daterange, weather_result.aggby)
-        result._set_latlons(target_lats, target_lons)
+        result = self.WeatherResult.from_existing(weather_result)
+        result.aggloc = aggloc
 
         for datetimerange, param, values in weather_result:
             # get interpolated values
             result_values = np.zeros(num_targets)
-            if aggr == 'one':
+            if aggtype == 'one':
                 for i in xrange(num_targets):
                     result_values[i] = values[closest[i]]
-            elif aggr == 'mean':
+            elif aggtype == 'mean':
                 result_count = np.zeros(num_targets)
                 for i in xrange(num_original):
                     result_values[closest[i]] += values[i]
@@ -323,38 +334,35 @@ class WeatherExtractor:
             result._append(datetimerange, param, result_values)
         return result
 
-    def _aggregate_values(self, weather_result, aggby):
+    def _aggregate_values(self, weather_result, aggtime):
         """
         Aggregate weather values on hourly, daily or weekly level. Calculate the mean 
         value for each measurement point over given time period.
 
         Args:
             weather_result (:obj:WeatherResult): weather result object containing original measurements
-            aggrby (str): aggregation level, which can be 'hour', 'day' or 'week'
-
-        TODO:
-            * add weekly and monthly aggregation
+            aggtime (str): aggregation level, which can be 'hour', 'day' or 'week'
 
         Returns:
             WeatherResult: resulting object with aggregated values
         """
-        assert weather_result.aggby == 'hour'
-        assert aggby in ['hour', 'day', 'week']
+        assert weather_result.aggtime == 'hour'
+        assert aggtime in ['hour', 'day', 'week']
 
-        result = self.WeatherResult(weather_result.daterange, aggby)
-        result._set_latlons(*weather_result.get_latslons())
+        result = self.WeatherResult.from_existing(weather_result)
+        result.aggtime = aggtime
 
         # aggregation function
         def fn_same_group(x, y): return x.date() == y.date(
         ) and x.hour == y.hour  # hourly aggregation
-        if aggby == 'day':
+        if aggtime == 'day':
             def fn_same_group(x, y): return x.date(
             ) == y.date()  # daily aggregation
-        elif aggby == 'week':
+        elif aggtime == 'week':
             def fn_same_group(x, y): return x.isocalendar()[
                 :2] == y.isocalendar()[:2]  # weekly aggregation
 
-        curr_pos, n = 0, weather_result._n_values()
+        curr_pos, n = 0, len(weather_result)
         while curr_pos < n:
             # new aggregation group
             start_datetimerange, _, _ = weather_result[curr_pos]
@@ -380,29 +388,30 @@ class WeatherExtractor:
                 # calculate mean value
                 result._append((start_datetime, end_datetime),
                                param, np.array(values_list).mean(axis=0))
-
         return result
 
-    def get_actual(self, from_date, to_date, aggby='hour'):
+    def get_actual(self, from_date, to_date, aggtime='hour', aggloc='grid'):
         """
         Get the actual weather for each day from a given time window.
 
         Args:
             from_date (datetime.date): start of the timewindow
             end_date (datetime.date): end of the timewindow
-            aggby (str): aggregation level, can be 'hour', 'day' or 'week'
+            aggtime (str): time aggregation level; can be 'hour', 'day' or 'week'
+            aggloc (str): location aggregation level; can be 'country', 'region' or 'grid'
 
         Returns:
             WeatherResult: resulting object with weather measurements
         """
-        assert isinstance(from_date, datetime.date)
-        assert isinstance(to_date, datetime.date)
+        assert type(from_date) == datetime.date
+        assert type(to_date) == datetime.date
         assert from_date <= to_date
-        assert aggby in ['hour', 'day', 'week']
+        assert aggtime in ['hour', 'day', 'week']
+        assert aggloc in ['country', 'region', 'grid']
 
         # start with a hour aggregation
         tmp_result = self.WeatherResult(
-            daterange=(from_date, to_date), aggby='hour')
+            daterange=(from_date, to_date))
 
         curr_date = from_date
         while curr_date <= to_date:
@@ -417,31 +426,45 @@ class WeatherExtractor:
 
             curr_date += datetime.timedelta(days=1)
 
+        assert len(tmp_result) > 0
+
         # point aggregation
-        tmp_result = self._aggregate_points(
-            tmp_result, self.interp_points[0], self.interp_points[1])
+        tmp_result = self._aggregate_points(tmp_result, aggloc)
 
         # time aggregation
-        tmp_result = self._aggregate_values(tmp_result, aggby)
+        tmp_result = self._aggregate_values(tmp_result, aggtime)
 
         return tmp_result
 
-    def get_forecast(self, from_date, to_date, aggby='hour'):
+    def get_forecast(self, base_date, from_date, to_date, aggtime='hour', aggloc='grid'):
         """
         Get the weather forecast for a given time window from a given date.
 
         Args:
-            from_date (datetime.date): start of the time window and base date of the forecast
+            base_date (datetime.date): base date for the forecast
+            from_date (datetime.date): start of the time window 
             end_date (datetime.date): end of the timewindow
-            aggby (str): aggregation level, can be 'hour', 'day' or 'week'
+            aggtime (str): time aggregation level; can be 'hour', 'day' or 'week'
+            aggloc (str): location aggregation level; can be 'country', 'region' or 'grid'
 
         Returns:
             WeatherResult: resulting object with weather measurements
         """
-        assert isinstance(from_date, datetime.date)
-        assert isinstance(to_date, datetime.date)
-        assert from_date <= to_date
-        assert aggby in ['hour', 'day', 'week']
+        # isinstance(datetime.datetime, datetime.date) == True
+        if type(base_date) == datetime.datetime:
+            base_date = base_date.date()
+        if type(from_date) == datetime.datetime:
+            from_date = from_date.date()
+        if type(to_date) == datetime.datetime:
+            to_date = to_date.date()
+        
+
+        assert type(base_date) == datetime.date
+        assert type(from_date) == datetime.date
+        assert type(to_date) == datetime.date
+        assert base_date <= from_date <= to_date
+        assert aggtime in ['hour', 'day', 'week']
+        assert aggloc in ['country', 'region', 'grid']
 
         # beginning date and time
         start_datetime = datetime.datetime.combine(
@@ -451,23 +474,25 @@ class WeatherExtractor:
 
         # start with a hour aggregation
         tmp_result = self.WeatherResult(
-            daterange=(start_datetime.date(), end_datetime.date()), aggby='hour')
+            daterange=(start_datetime.date(), end_datetime.date()))
 
-        for grib_msg in self.index_valid_date[from_date]:
+        # forecast from the date base_date
+        for grib_msg in self.index_valid_date[base_date]:
             forecast_datetime = WeatherExtractor._str_to_datetime(
                 str(grib_msg.validityDate) + str(grib_msg.validityTime))
 
-            if forecast_datetime < end_datetime:
+            if forecast_datetime < start_datetime:
+                continue
+            elif start_datetime <= forecast_datetime < end_datetime:
                 tmp_result._append_msg(grib_msg)
             else:
                 break  # assume messages are sorted by datetime
 
         # point aggregation
-        tmp_result = self._aggregate_points(
-            tmp_result, self.interp_points[0], self.interp_points[1])
+        tmp_result = self._aggregate_points(tmp_result, aggloc)
 
         # time aggregation
-        tmp_result = self._aggregate_values(tmp_result, aggby)
+        tmp_result = self._aggregate_values(tmp_result, aggtime)
 
         return tmp_result
 
