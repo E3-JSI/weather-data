@@ -219,16 +219,16 @@ class WeatherExtractor:
             self.lats, self.lons = None, None
 
             # measurements data
-            self.weather_datetimeranges = []
-            self.weather_values = []
-            self.weather_params = []
+            self.measure_datetimeranges = []
+            self.measure_values = []
+            self.measure_params = []
 
         def __iter__(self):
             for i in xrange(self._n_values()):
-                yield self.weather_datetimeranges[i], self.weather_params[i], self.weather_values[i]
+                yield self.measure_datetimeranges[i], self.measure_params[i], self.measure_values[i]
 
         def __getitem__(self, key):
-            return self.weather_datetimeranges[key], self.weather_params[key], self.weather_values[key]
+            return self.measure_datetimeranges[key], self.measure_params[key], self.measure_values[key]
 
         def __len__(self):
             return self._n_values()
@@ -239,7 +239,7 @@ class WeatherExtractor:
 
         def _n_values(self):
             """ Get number of weather measurements. """
-            return len(self.weather_values)
+            return len(self.measure_values)
 
         def get_latslons(self):
             """ Get lattitudes and longtitudes of weather measurement points """
@@ -254,20 +254,20 @@ class WeatherExtractor:
                 self._set_latlons(
                     grib_msg.latlons()[0].flatten(), grib_msg.latlons()[1].flatten())
 
-            self.weather_values.append(grib_msg.values.flatten())
+            self.measure_values.append(grib_msg.values.flatten())
 
             validity_datetime = WeatherExtractor._str_to_datetime(
                 str(grib_msg.validityDate) + str(grib_msg.validityTime))
-            self.weather_datetimeranges.append(
+            self.measure_datetimeranges.append(
                 (validity_datetime, validity_datetime))
 
-            self.weather_params.append(grib_msg.shortName)
+            self.measure_params.append(grib_msg.shortName)
 
         def _append(self, datetime_range, param, values):
             """ Add new weather measurement. """
-            self.weather_datetimeranges.append(datetime_range)
-            self.weather_params.append(param)
-            self.weather_values.append(values)
+            self.measure_datetimeranges.append(datetime_range)
+            self.measure_params.append(param)
+            self.measure_values.append(values)
 
     def _aggregate_points(self, weather_result, target_lats, target_lons, aggr='one'):
         """
@@ -344,12 +344,16 @@ class WeatherExtractor:
         result = self.WeatherResult(weather_result.daterange, aggby)
         result._set_latlons(*weather_result.get_latslons())
 
-        fn_same_group = lambda x, y: x.date() == y.date() and x.hour == y.hour # hourly aggregation
+        # aggregation function
+        def fn_same_group(x, y): return x.date() == y.date(
+        ) and x.hour == y.hour  # hourly aggregation
         if aggby == 'day':
-            fn_same_group = lambda x, y: x.date() == y.date() # daily aggregation
+            def fn_same_group(x, y): return x.date(
+            ) == y.date()  # daily aggregation
         elif aggby == 'week':
-            fn_same_group = lambda x, y: x.isocalendar()[:2] == y.isocalendar()[:2] # weekly aggregation
-        
+            def fn_same_group(x, y): return x.isocalendar()[
+                :2] == y.isocalendar()[:2]  # weekly aggregation
+
         curr_pos, n = 0, weather_result._n_values()
         while curr_pos < n:
             # new aggregation group
@@ -357,24 +361,25 @@ class WeatherExtractor:
 
             start_datetime = start_datetimerange[0]
             end_datetime = start_datetime
-            
+
             agg_values = defaultdict(lambda: [])
             while curr_pos < n:
                 curr_datetimerange, curr_param, curr_values = weather_result[curr_pos]
                 curr_datetime = curr_datetimerange[0]
 
-                print start_datetime, curr_datetime, fn_same_group(start_datetime,curr_datetime)
+                # print start_datetime, curr_datetime, fn_same_group(start_datetime,curr_datetime)
                 if fn_same_group(start_datetime, curr_datetime):
                     agg_values[curr_param].append(curr_values)
                     end_datetime = max(end_datetime, curr_datetime)
                     curr_pos += 1
                 else:
                     break
-            
+
             # group end, aggregate values
             for param, values_list in agg_values.iteritems():
                 # calculate mean value
-                result._append((start_datetime, end_datetime), param, np.array(values_list).mean(axis=0))
+                result._append((start_datetime, end_datetime),
+                               param, np.array(values_list).mean(axis=0))
 
         return result
 
@@ -394,7 +399,7 @@ class WeatherExtractor:
         assert isinstance(to_date, datetime.date)
         assert from_date <= to_date
         assert aggby in ['hour', 'day', 'week']
-        
+
         # start with a hour aggregation
         tmp_result = self.WeatherResult(
             daterange=(from_date, to_date), aggby='hour')
@@ -437,11 +442,12 @@ class WeatherExtractor:
         assert isinstance(to_date, datetime.date)
         assert from_date <= to_date
         assert aggby in ['hour', 'day', 'week']
-        
+
         # beginning date and time
         start_datetime = datetime.datetime.combine(
             from_date, datetime.time(0, 0))
-        end_datetime = datetime.datetime.combine(to_date, datetime.time(23, 59))
+        end_datetime = datetime.datetime.combine(
+            to_date, datetime.time(23, 59))
 
         # start with a hour aggregation
         tmp_result = self.WeatherResult(
@@ -473,16 +479,16 @@ class WeatherApi:
     Example:
         $ wa = WeatherApi()
     """
+
     def __init__(self):
         self.server = EcmwfServer()
 
-    def get(self, date_from, date_to, time=None, steps=None, area=None, target=None):
+    def get(self, from_date, to_date, target, time='midnight', steps=None, area='slovenia'):
         """
         Execute a MARS request with given parameters and store the result to file 'target.grib'.
 
         Args:
-            weather_result (:obj:WeatherResult):
-            aggrby (str): aggregation level, which can be 'hour' or 'day'
+
         """
         assert isinstance(from_date, datetime.date)
         assert isinstance(to_date, datetime.date)
@@ -491,20 +497,46 @@ class WeatherApi:
 
         # create new mars request
         req = WeatherReq()
-        req.set_date(dateFrom, end_date=dateTo)
 
-        if time == 'noon':
-            req.set_noon()
-        else:
+        # set date
+        req.set_date(from_date, end_date=to_date)
+
+        # set target grib file
+        req.set_target(target)
+
+        # set time
+        if time == 'midnight':
             req.set_midnight()
+        else:
+            req.set_noon()
 
+        # set steps
+        if steps is None:
+            # base date is date_from, base time is 'midnight'
+            steps = []
+
+            # current day + next three days
+            for day_off in range(4):
+                steps += [day_off * 24 +
+                          hour_off for hour_off in [0, 6, 9, 12, 15, 18, 21]]
+
+            # other 4 days
+            for day_off in range(4, 8):
+                steps += [day_off * 24 +
+                          hour_off for hour_off in [0, 6, 12, 18]]
+
+            if time == 'noon':
+                # base time is 'noon'
+                steps = [step for step in steps in step - 12 >= 0]
+
+        req.set_step(steps)
+
+        # set area
         if area == 'slovenia':
             area = Area.Slovenia
         req.set_area(area)
 
-        req.set_step(steps)
+        # set default grib resolution
         req.set_grid((0.25, 0.25))
-        req.set_target(target)
 
         self.server.retrieve(req)
-        # return pygrib.open(target)
