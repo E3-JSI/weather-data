@@ -3,3 +3,5 @@
 *.req
 *.pyc
 *.grib
+
+build/

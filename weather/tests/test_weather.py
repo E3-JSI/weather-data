@@ -4,7 +4,7 @@
 ECMWF MARS archive access code.
 """
 
-import weather
+from .. import request
 import unittest
 
 from datetime import date
@@ -15,10 +15,10 @@ class TestEcmwfServer(unittest.TestCase):
     @classmethod
     def setUpClass(self):
         # prepare the server object
-        self.server = weather.EcmwfServer()
+        self.server = request.EcmwfServer()
 
         # prepare a test request
-        self.req = weather.WeatherReq()
+        self.req = request.WeatherReq()
         self.req.set_target("TEST.txt")
         self.req.set_date(date(2016, 9, 17))
         self.req.set_midnight()
@@ -52,7 +52,7 @@ class TestWeatherReq(unittest.TestCase):
 
     def test_is_complete(self):
         """Test if request is correctly checked for completeness."""
-        req = weather.WeatherReq()
+        req = request.WeatherReq()
         # request is not complete until all fields are set
         self.assertFalse(req.is_complete())
         req.set_target("filename.bin")
@@ -67,7 +67,7 @@ class TestWeatherReq(unittest.TestCase):
 
     def test_set_target(self):
         """Test if request target is set properly."""
-        req = weather.WeatherReq()
+        req = request.WeatherReq()
         target = "filename.bin"
 
         req.set_target(target)
@@ -80,7 +80,7 @@ class TestWeatherReq(unittest.TestCase):
 
     def test_set_date(self):
         """Test if request dates are set properly."""
-        req = weather.WeatherReq()
+        req = request.WeatherReq()
         req_date = date(2016, 9, 17)
 
         # set just one date
@@ -112,7 +112,7 @@ class TestWeatherReq(unittest.TestCase):
 
     def test_set_midnight(self):
         """Test if request time is properly set to midnight."""
-        req = weather.WeatherReq()
+        req = request.WeatherReq()
         req.set_midnight()
         self.assertEqual(req.time, "00:00:00")
         self.assertEqual(req.time, req.params['time'])
@@ -120,7 +120,7 @@ class TestWeatherReq(unittest.TestCase):
 
     def test_set_noon(self):
         """Test if request time is properly set to noon."""
-        req = weather.WeatherReq()
+        req = request.WeatherReq()
         req.set_noon()
         self.assertEqual(req.time, "12:00:00")
         self.assertEqual(req.time, req.params['time'])
@@ -128,11 +128,11 @@ class TestWeatherReq(unittest.TestCase):
 
     def test_set_step(self):
         """Test if request step is properly set."""
-        req = weather.WeatherReq()
+        req = request.WeatherReq()
 
         # all allowed values are ok
-        req.set_step(sorted(weather.ALLOWED_STEPS))
-        self.assertEqual(req.step, sorted(weather.ALLOWED_STEPS))
+        req.set_step(sorted(request.ALLOWED_STEPS))
+        self.assertEqual(req.step, sorted(request.ALLOWED_STEPS))
 
         # should be list or tuple
         req.set_step((1, 93, 234))
@@ -160,7 +160,7 @@ class TestWeatherReq(unittest.TestCase):
 
     def test_to_req_str(self):
         """Test if request is properly formatted for querying the ECMWF service."""
-        test_req = weather.WeatherReq()
+        test_req = request.WeatherReq()
         test_req.set_date(date(2016, 9, 17))
         test_req.set_noon()
         test_req.set_step([0])
