@@ -8,6 +8,9 @@ def download_data():
     wa.get(from_date=date(2015, 1, 1), to_date=date(
         2015, 2, 28), target='jan2015-feb2015.grib')
 
+# download data from MARS - might take some time
+download_data()
+    
 # query the downloaded data
 we = WeatherExtractor()
 we.load('jan2015-feb2015.grib')
