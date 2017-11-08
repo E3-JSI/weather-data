@@ -14,6 +14,7 @@ Todo:
 """
 import datetime
 import json
+import cPickle as pickle
 from collections import defaultdict
 
 import numpy as np
@@ -76,6 +77,9 @@ arso_weather_stations = [
         Total cloud cover                                   tcc
         2 metre temperature                                 2t
         Total precipitation                                 tp
+
+    Warning:
+        * after 2015-5-13 number of parameters increases from 11 to 15
 """
 
 
@@ -119,8 +123,8 @@ class WeatherExtractor:
         self.interp_points = self._read_points('arso_weather_stations')
         self.grib_msgs = None
 
-    def load(self, filepath):
-        """ Load GRIB file from given filepath. """
+    def _load_from_grib(self, filepath):
+        """ Load measurements from GRIB file. """
         grbs = pygrib.open(filepath)
 
         # load grib messages
@@ -145,8 +149,39 @@ class WeatherExtractor:
         # convert to dataframe
         self.grib_msgs = pd.DataFrame.from_dict(grib_messages)
 
+        # remove 'ptype'
+        self.grib_msgs = self.grib_msgs[self.grib_msgs['shortName'] != 'ptype']
+
         # index by base date (date when the forecast was made)
         self.grib_msgs.set_index('validDateTime', drop=False, inplace=True)
+
+    def _load_from_pkl(self, filepath):
+        """ Load pandas.DataFrame containing measurements. """
+        with open(filepath, 'rb') as f:
+            self.grib_msgs = pickle.load(f)
+        
+        # remove 'ptype'
+        self.grib_msgs = self.grib_msgs[self.grib_msgs['shortName'] != 'ptype']
+
+    def load(self, filepath):
+        """
+        Load weather data from grib file obtained via API request or from
+        the pickled pandas.DataFrame.
+
+        Arguments:
+            filepath (str):
+
+        Warning:
+            after 2015-5-13 number of parameters increases from 11 to 15 and
+            additional parameter 'ptype' which disturbs the indexing 
+            (because of inconsistent 'validDateTime') sneaks in 
+        """
+        if filepath.endswith('.grib'):
+            self._load_from_grib(filepath)
+        elif filepath.endswith('.pkl'):
+            self._load_from_pkl(filepath)
+        else:
+            raise Exception("File format not recognized")
 
     def _read_points(self, points_file):
         """ Read interpolation points or regions from file. """
@@ -200,7 +235,7 @@ class WeatherExtractor:
             num_original (int):
             num_targets (int):
             aggtype (str):
-        
+
         Returns:
             np.array(dtype=float): interpolated values for target points
         """
@@ -241,7 +276,7 @@ class WeatherExtractor:
         from weather_result points.
 
         Args:
-            weather_result (:obj:WeatherResult): weather result object containing original measurements and points
+            weather_result (pandas.DataFrame): object containing original measurements and points
             aggloc (str): aggregation level
             aggtype (str): aggregation type, can be one of the following:
 
@@ -304,9 +339,12 @@ class WeatherExtractor:
         Aggregate weather values on hourly, daily or weekly level. Calculate the mean
         value for each measurement point over given time period.
 
+        Serves more as an aggregation example. For more complex aggregations set aggtime='hour'
+        and implement own aggregation policy on pandas.DataFrame.
+
         Args:
-            weather_result (:obj:WeatherResult): weather result object containing original measurements
-            aggtime (str): aggregation level, which can be 'hour', 'day' or 'week'
+            weather_result (pandas.DataFrame): object containing original measurements
+            aggtime (str): aggregation level which can be 'hour', 'day' or 'week'
 
         Returns:
             pandas.DataFrame: resulting object with aggregated values
@@ -319,6 +357,7 @@ class WeatherExtractor:
 
         weather_result.set_index(
             ['validDateTime', 'validityDateTime', 'shortName'], drop=True, inplace=True)
+
         groups = weather_result.groupby([pd.Grouper(freq='D', level='validDateTime'), pd.Grouper(
             freq=aggtime, level='validityDateTime'), pd.Grouper(level='shortName')])
 
@@ -341,7 +380,7 @@ class WeatherExtractor:
 
         Args:
             from_date (datetime.date): start of the timewindow
-            end_date (datetime.date): end of the timewindow
+            to_date (datetime.date): end of the timewindow
             aggtime (str): time aggregation level; can be 'hour', 'day' or 'week'
             aggloc (str): location aggregation level; can be 'country', 'region' or 'grid'
 
@@ -367,7 +406,7 @@ class WeatherExtractor:
         # time aggregation
         tmp_result = self._aggregate_values(tmp_result, aggtime)
 
-        # dataframe with no index
+        
         return tmp_result
 
     def get_forecast(self, base_date, from_date, to_date, aggtime='hour', aggloc='grid'):
@@ -391,11 +430,11 @@ class WeatherExtractor:
         assert aggtime in ['hour', 'day', 'week']
         assert aggloc in ['country', 'region', 'grid']
 
-        req_period = self.grib_msgs[base_date]
+        req_period = self.grib_msgs.loc[base_date]
 
         # start with default (hourly) aggregation
-        tmp_result = req_period[from_date <=
-                                req_period['validityDateTime'].dt.date <= to_date]
+        tmp_result = req_period[req_period['validityDateTime'].dt.date >= from_date]
+        tmp_result = req_period[req_period['validityDateTime'].dt.date <= to_date]
 
         # reset original index
         tmp_result.reset_index(drop=True, inplace=True)
@@ -416,7 +455,6 @@ class WeatherApi:
     Example:
         $ wa = WeatherApi()
     """
-
     def __init__(self):
         self.server = EcmwfServer()
 
