@@ -434,7 +434,7 @@ class WeatherExtractor:
 
         # start with default (hourly) aggregation
         tmp_result = req_period[req_period['validityDateTime'].dt.date >= from_date]
-        tmp_result = req_period[req_period['validityDateTime'].dt.date <= to_date]
+        tmp_result = tmp_result[tmp_result['validityDateTime'].dt.date <= to_date]
 
         # reset original index
         tmp_result.reset_index(drop=True, inplace=True)
