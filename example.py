@@ -6,15 +6,19 @@ from weather.weather import WeatherExtractor, WeatherApi
 def download_data():
     wa = WeatherApi()
     wa.get(from_date=date(2015, 1, 1), to_date=date(
-        2015, 1, 31), target='jan2015.grib')
+        2015, 2, 28), target='jan2015-feb2015.grib')
 
+# download data from MARS - might take some time
+download_data()
+    
 # query the downloaded data
 we = WeatherExtractor()
 we.load('jan2015-feb2015.grib')
 
-# get actual weather on 2015-1-10, 2015-1-11 and 2015-1-12
+# get actual weather on 2015-1-10, 2015-1-11 and 2015-1-12 by regions
 weather_result = we.get_actual(from_date=date(
-    2015, 1, 20), to_date=date(2015, 1, 20), aggtime='day', aggloc='country')
+    2015, 1, 10), to_date=date(2015, 1, 12), aggtime='day', aggloc='region')
+
 lats, lons = weather_result.get_latslons()
 
 # print results
