@@ -26,44 +26,6 @@ import pygrib
 from .request import Area, EcmwfServer, WeatherReq
 
 """
-List of weather measuring station of Slovenian environment agency.
-"""
-arso_weather_stations = [
-    {"lat": 45.8958, "alt": 55.0, "lon": 13.6289,
-        "shortTitle": "BILJE", "title": "NOVA GORICA"},
-    {"lat": 46.2447, "alt": 244.0, "lon": 15.2525,
-        "shortTitle": "CELJE", "title": "CELJE"},
-    {"lat": 45.5603, "alt": 157.0, "lon": 15.1508,
-        "shortTitle": "\u010cRNOMELJ - DOBLI\u010cE", "title": "CRNOMELJ"},
-    {"lat": 46.3794, "alt": 2514.0, "lon": 13.8539,
-        "shortTitle": "KREDARICA", "title": "KREDARICA"},
-    {"lat": 45.8936, "alt": 154.0, "lon": 15.525,
-        "shortTitle": "CERKLJE - LETALI\u0160\u010cE", "title": "CERKLJE - LETALISCE"},
-    {"lat": 46.48, "alt": 264.0, "lon": 15.6869,
-        "shortTitle": "MARIBOR - LETALI\u0160\u010cE", "title": "MARIBOR/SLIVNICA"},
-    {"lat": 46.2178, "alt": 364.0, "lon": 14.4775,
-        "shortTitle": "BRNIK - LETALI\u0160\u010cE", "title": "LJUBLJANA/BRNIK"},
-    {"lat": 46.37, "alt": 515.0, "lon": 14.18,
-        "shortTitle": "LESCE", "title": "LESCE"},
-    {"lat": 45.4756, "alt": 2.0, "lon": 13.6206,
-        "shortTitle": "PORTORO\u017d - LETALI\u0160\u010cE", "title": "PORTOROZ/SECOVLJE"},
-    {"lat": 46.0681, "alt": 943.0, "lon": 15.2897,
-        "shortTitle": "LISCA", "title": "LISCA"},
-    {"lat": 46.0658, "alt": 299.0, "lon": 14.5172,
-        "shortTitle": "LJUBLJANA - BE\u017dIGRAD", "title": "LJUBLJANA/BEZIGRAD"},
-    {"lat": 46.6525, "alt": 188.0, "lon": 16.1961,
-        "shortTitle": "MURSKA SOBOTA - RAKI\u010cAN", "title": "MURSKA SOBOTA"},
-    {"lat": 45.8019, "alt": 220.0, "lon": 15.1822,
-        "shortTitle": "NOVO MESTO", "title": "NOVO MESTO"},
-    {"lat": 45.7664, "alt": 533.0, "lon": 14.1975,
-        "shortTitle": "POSTOJNA", "title": "POSTOJNA"},
-    {"lat": 46.4975, "alt": 864.0, "lon": 13.7175,
-        "shortTitle": "RATE\u010cE - PLANICA", "title": "RATECE"},
-    {"lat": 46.49, "alt": 455.0, "lon": 15.1161,
-        "shortTitle": "\u0160MARTNO PRI SLOVENJ GRADCU", "title": "SLOVENJ GRADEC"}
-]
-
-"""
     List of returned weather measurements:
         Name:                                               Short Name:
         Cloud base height                                   cbh
@@ -120,83 +82,86 @@ class WeatherExtractor:
     """
 
     def __init__(self):
-        self.interp_points = self._read_points('arso_weather_stations')
         self.grib_msgs = None
 
-    def _load_from_grib(self, filepath):
-        """ Load measurements from GRIB file. """
-        grbs = pygrib.open(filepath)
-
-        # load grib messages
-        grib_messages = []
-
-        lats, lons = grbs.message(1).latlons()
-        lats, lons = lats.flatten(), lons.flatten()
-
-        grbs.rewind()
-        for grib_msg in grbs:
-            grib_messages.append({
-                'shortName': grib_msg.shortName,
-                'values': grib_msg.values.flatten(),
-                'validDateTime': grib_msg.validDate,
-                'validityDateTime': WeatherExtractor._str_to_datetime(
-                    str(grib_msg.validityDate) + str(grib_msg.validityTime)),
-                'lats': lats,
-                'lons': lons
-            })
-        grbs.close()
-
-        # convert to dataframe
-        self.grib_msgs = pd.DataFrame.from_dict(grib_messages)
-
-        # remove 'ptype'
-        self.grib_msgs = self.grib_msgs[self.grib_msgs['shortName'] != 'ptype']
-
-        # index by base date (date when the forecast was made)
-        self.grib_msgs.set_index('validDateTime', drop=False, inplace=True)
-
-    def _load_from_pkl(self, filepath):
-        """ Load pandas.DataFrame containing measurements. """
-        with open(filepath, 'rb') as f:
-            self.grib_msgs = pickle.load(f)
-        
-        # remove 'ptype'
-        self.grib_msgs = self.grib_msgs[self.grib_msgs['shortName'] != 'ptype']
-
-    def load(self, filepath):
+    def load(self, filepaths):
         """
         Load weather data from grib file obtained via API request or from
         the pickled pandas.DataFrame.
 
         Arguments:
-            filepath (str):
+            filepaths (list): list of paths to files containing weather data
 
         Warning:
             after 2015-5-13 number of parameters increases from 11 to 15 and
             additional parameter 'ptype' which disturbs the indexing 
             (because of inconsistent 'validDateTime') sneaks in 
         """
-        if filepath.endswith('.grib'):
-            self._load_from_grib(filepath)
-        elif filepath.endswith('.pkl'):
-            self._load_from_pkl(filepath)
-        else:
-            raise Exception("File format not recognized")
 
-    def _read_points(self, points_file):
-        """ Read interpolation points or regions from file. """
-        if points_file == 'arso_weather_stations':
-            # weather_stations = []
-            # with open('./data/arso_weather_stations.json', 'r') as f:
-            #    weather_stations = json.loads(f.read())
+        def _load_from_grib(filepath, append=False):
+            """ Load measurements from GRIB file. """
+            grbs = pygrib.open(filepath)
 
-            lats, lons = np.zeros(len(arso_weather_stations)), np.zeros(
-                len(arso_weather_stations))
-            for i, weather_station in enumerate(arso_weather_stations):
-                lats[i], lons[i] = weather_station['lat'], weather_station['lon']
-            return (lats, lons)
-        else:
-            raise ValueError('Unrecognized points file %s' % repr(points_file))
+            # load grib messages
+            grib_messages = []
+
+            lats, lons = grbs.message(1).latlons()
+            lats, lons = lats.flatten(), lons.flatten()
+
+            grbs.rewind()
+            for grib_msg in grbs:
+                grib_messages.append({
+                    'shortName': grib_msg.shortName,
+                    'values': grib_msg.values.flatten(),
+                    'validDateTime': grib_msg.validDate,
+                    'validityDateTime': WeatherExtractor._str_to_datetime(
+                        str(grib_msg.validityDate) + str(grib_msg.validityTime)),
+                    'lats': lats,
+                    'lons': lons,
+                    'type': grib_msg.marsType  # forecast or actual
+                })
+            grbs.close()
+            return pd.DataFrame.from_dict(grib_messages)
+
+        def _load_from_pkl(filepath, append=False):
+            """ Load pandas.DataFrame containing measurements. """
+            with open(filepath, 'rb') as f:
+                return pickle.load(f)
+
+        if not isinstance(filepaths, list):
+            filepaths = [filepaths]  # wrap in list
+
+        for filepath in filepaths:
+            curr_msgs = None
+            if filepath.endswith('.grib'):
+                curr_msgs = _load_from_grib(filepath, append=True)
+            elif filepath.endswith('.pkl'):
+                curr_msgs = _load_from_pkl(filepath, append=True)
+            else:
+                raise Exception("File format not recognized")
+
+            # append messages
+            if self.grib_msgs == None:
+                self.grib_msgs = curr_msgs
+            else:
+                self.grib_msgs = pd.concat([self.grib_msgs, curr_msgs])
+
+            # remove 'ptype'
+            self.grib_msgs = self.grib_msgs[self.grib_msgs['shortName'] != 'ptype']
+
+            # index by base date (date when the forecast was made)
+            self.grib_msgs.set_index('validDateTime', drop=False, inplace=True)
+            self.grib_msgs.sort_index(inplace=True)
+
+    def _latslons_from_dict(self, points):
+        """ Get lattitudes and longtitudes from list of points. """
+        assert isinstance(points, list)
+
+        n_points = len(points)
+        lats, lons = np.zeros(n_points), np.zeros(n_points)
+        for i, point in enumerate(points):
+            lats[i], lons[i] = point['lat'], point['lon']
+        return (lats, lons)
 
     def _calc_closest(self, lats, lons, target_lats, target_lons):
         """
@@ -270,7 +235,7 @@ class WeatherExtractor:
             # hhmm format
             return datetime.datetime.combine(tmp_date, datetime.time(int(time_str[:2]), int(time_str[2:])))
 
-    def _aggregate_points(self, weather_result, aggloc, aggtype='one'):
+    def _aggregate_points(self, weather_result, aggloc, aggtype='one', interp_points=None):
         """
         Do an interpolation of measurement values for target points (given with target_lats and target_lons)
         from weather_result points.
@@ -289,17 +254,18 @@ class WeatherExtractor:
         Returns:
             pandas.DataFrame: resulting object with interpolated points
         """
-        assert aggloc in ['grid', 'region', 'country']
+        assert aggloc in ['grid', 'points', 'country']
         assert aggtype in ['one', 'mean']
-
+        if aggloc == 'points':
+            assert interp_points is not None
         assert len(weather_result) > 0
 
         lats, lons = weather_result['lats'].iloc[0], weather_result['lons'].iloc[0]
 
         if aggloc == 'grid':  # no aggregation
             return weather_result
-        elif aggloc == 'region':  # weather station aggregation - fix this
-            target_lats, target_lons = self.interp_points[0], self.interp_points[1]
+        elif aggloc == 'points':
+            target_lats, target_lons = interp_points[0], interp_points[1]
         elif aggloc == 'country':  # center of slovenia
             target_lats, target_lons = np.array([46.1512]), np.array([14.9955])
 
@@ -374,7 +340,7 @@ class WeatherExtractor:
 
         return tmp_result
 
-    def get_actual(self, from_date, to_date, aggtime='hour', aggloc='grid'):
+    def get_actual(self, from_date, to_date, aggtime='hour', aggloc='grid', interp_points=None):
         """
         Get the actual weather for each day from a given time window.
 
@@ -382,8 +348,9 @@ class WeatherExtractor:
             from_date (datetime.date): start of the timewindow
             to_date (datetime.date): end of the timewindow
             aggtime (str): time aggregation level; can be 'hour', 'day' or 'week'
-            aggloc (str): location aggregation level; can be 'country', 'region' or 'grid'
-
+            aggloc (str): location aggregation level; can be 'country', 'points' or 'grid'
+            interp_points (list of dicts): list of interpolation points with each point represented
+                as dict with fields 'lon' and 'lat' representing longtitude and lattitude if aggloc='points'
         Returns:
             pandas.DataFrame: resulting object with weather measurements
         """
@@ -391,25 +358,41 @@ class WeatherExtractor:
         assert type(to_date) == datetime.date
         assert from_date <= to_date
         assert aggtime in ['hour', 'day', 'week']
-        assert aggloc in ['country', 'region', 'grid']
+        assert aggloc in ['country', 'points', 'grid']
+
+        if aggloc == 'points':
+            if interp_points is None:
+                raise ValueError(
+                    "interp_points cannot be None if aggloc is set to 'points'.")
+            interp_points = self._latslons_from_dict(interp_points)
 
         req_period = self.grib_msgs.loc[from_date:to_date]
         tmp_result = req_period[req_period['validDateTime'].dt.date ==
                                 req_period['validityDateTime'].dt.date]
+        actual_data = tmp_result[tmp_result['type'] == 'an']
+
+        # get data about actual weather
+        if len(actual_data) == 0:
+            raise RuntimeWarning("No data about actual weather available!")
+        else:
+            tmp_result = actual_data
+
+        # drop 'type' column
+        tmp_result.drop('type', axis=1, inplace=True)
 
         # reset original index
         tmp_result.reset_index(drop=True, inplace=True)
 
         # point aggregation
-        tmp_result = self._aggregate_points(tmp_result, aggloc)
+        tmp_result = self._aggregate_points(
+            tmp_result, aggloc, interp_points=interp_points)
 
         # time aggregation
         tmp_result = self._aggregate_values(tmp_result, aggtime)
 
-        
         return tmp_result
 
-    def get_forecast(self, base_date, from_date, to_date, aggtime='hour', aggloc='grid'):
+    def get_forecast(self, base_date, from_date, to_date, aggtime='hour', aggloc='grid', interp_points=None):
         """
         Get the weather forecast for a given time window from a given date.
 
@@ -418,7 +401,7 @@ class WeatherExtractor:
             from_date (datetime.date): start of the time window
             end_date (datetime.date): end of the timewindow
             aggtime (str): time aggregation level; can be 'hour', 'day' or 'week'
-            aggloc (str): location aggregation level; can be 'country', 'region' or 'grid'
+            aggloc (str): location aggregation level; can be 'country', 'points' or 'grid'
 
         Returns:
             pandas.DataFrame: resulting object with weather measurements
@@ -428,7 +411,13 @@ class WeatherExtractor:
         assert type(to_date) == datetime.date
         assert base_date <= from_date <= to_date
         assert aggtime in ['hour', 'day', 'week']
-        assert aggloc in ['country', 'region', 'grid']
+        assert aggloc in ['country', 'points', 'grid']
+
+        if aggloc == 'points':
+            if interp_points is None:
+                raise ValueError(
+                    "interp_points cannot be None if aggloc is set to 'points'.")
+            interp_points = self._latslons_from_dict(interp_points)
 
         req_period = self.grib_msgs.loc[base_date]
 
@@ -436,11 +425,18 @@ class WeatherExtractor:
         tmp_result = req_period[req_period['validityDateTime'].dt.date >= from_date]
         tmp_result = tmp_result[tmp_result['validityDateTime'].dt.date <= to_date]
 
+        # keep only forecast data
+        tmp_result = tmp_result[tmp_result['type'] == 'fc']
+
+        # drop 'type' column
+        tmp_result.drop('type', axis=1, inplace=True)
+
         # reset original index
         tmp_result.reset_index(drop=True, inplace=True)
 
         # point aggregation
-        tmp_result = self._aggregate_points(tmp_result, aggloc)
+        tmp_result = self._aggregate_points(
+            tmp_result, aggloc, interp_points=interp_points)
 
         # time aggregation
         tmp_result = self._aggregate_values(tmp_result, aggtime)
@@ -455,20 +451,24 @@ class WeatherApi:
     Example:
         $ wa = WeatherApi()
     """
+
     def __init__(self):
         self.server = EcmwfServer()
 
-    def get(self, from_date, to_date, target, time='midnight', steps=None, area='slovenia'):
+    def get(self, from_date, to_date, target, request_type='forecast', base_time='midnight',
+            steps=None, area='slovenia', grid=(0.25, 0.25)):
         """
         Execute a MARS request with given parameters and store the result to file 'target.grib'.
 
         Args:
-
+            base_time (str): 'midnight' or 'noon'
         """
         assert isinstance(from_date, datetime.date)
         assert isinstance(to_date, datetime.date)
         assert from_date <= to_date
-        assert time in ['midnight', 'noon']
+
+        assert base_time in ['midnight', 'noon']
+        assert request_type in ['forecast', 'actual']
 
         # create new mars request
         req = WeatherReq()
@@ -479,39 +479,43 @@ class WeatherApi:
         # set target grib file
         req.set_target(target)
 
-        # set time
-        if time == 'midnight':
+        # set base time
+        if base_time == 'midnight':
             req.set_midnight()
         else:
             req.set_noon()
 
-        # set steps
-        if steps is None:
-            # base date is date_from, base time is 'midnight'
-            steps = []
+        if request_type == 'actual':  # get actual weather
+            req.set_type('an')
+            req.set_analysis_cycle()  # overrides the time
+        elif request_type == 'forecast':  # get weather forecast
+            req.set_type('fc')
+            if steps is None:
+                    # assume base time is 'midnight'
+                    # base_date is the date the forecast was made
+                steps = []
 
-            # current day + next three days
-            for day_off in range(4):
-                steps += [day_off * 24 +
-                          hour_off for hour_off in [0, 6, 9, 12, 15, 18, 21]]
+                # current day + next three days
+                for day_off in range(4):
+                    steps += [day_off * 24 +
+                              hour_off for hour_off in [0, 6, 9, 12, 15, 18, 21]]
 
-            # other 4 days
-            for day_off in range(4, 8):
-                steps += [day_off * 24 +
-                          hour_off for hour_off in [0, 6, 12, 18]]
+                # other 4 days
+                for day_off in range(4, 8):
+                    steps += [day_off * 24 +
+                              hour_off for hour_off in [0, 6, 12, 18]]
 
-            if time == 'noon':
-                # base time is 'noon'
-                steps = [step for step in steps in step - 12 >= 0]
+                if base_time == 'noon':
+                    steps = [step for step in steps in step - 12 >= 0]
 
-        req.set_step(steps)
+            req.set_step(steps)
 
         # set area
         if area == 'slovenia':
             area = Area.Slovenia
         req.set_area(area)
 
-        # set default grib resolution
-        req.set_grid((0.25, 0.25))
+        # set grid resolution
+        req.set_grid(grid)
 
         self.server.retrieve(req)

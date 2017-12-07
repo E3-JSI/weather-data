@@ -17,9 +17,9 @@ download_data()
 we = WeatherExtractor()
 we.load('weather/data/jan2015-feb2015.grib')
 
-# get actual weather on 2015-1-10, 2015-1-11 and 2015-1-12 by regions
-weather_result = we.get_actual(from_date=date(
-    2015, 1, 10), to_date=date(2015, 1, 12), aggtime='day', aggloc='region')
+# get mean forecasted weather on 2015-1-10, 2015-1-11 and 2015-1-12 for whole country
+weather_result = we.get_forecast(from_date=date(
+    2015, 1, 10), to_date=date(2015, 1, 12), aggtime='day', aggloc='country')
 
 assert len(weather_result) > 0
 
