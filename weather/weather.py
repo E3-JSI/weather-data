@@ -141,7 +141,7 @@ class WeatherExtractor:
                 raise Exception("File format not recognized")
 
             # append messages
-            if self.grib_msgs == None:
+            if self.grib_msgs is None:
                 self.grib_msgs = curr_msgs
             else:
                 self.grib_msgs = pd.concat([self.grib_msgs, curr_msgs])
