@@ -2,27 +2,51 @@ from datetime import date
 
 from weather.weather import WeatherExtractor, WeatherApi
 
-# download data - use default parameters
-def download_data():
-    wa = WeatherApi()
-    wa.get(from_date=date(2015, 1, 1), to_date=date(
-        2015, 2, 28), target='jan2015-feb2015.grib')
 
-# download data from MARS - might take some time
-download_data()
-    
+def print_data(weather_data):
+    for row in weather_data.iterrows():
+        # row is tuple (index, columns)
+        measure = row[1]
+
+        print "Measurement of %s at from %s for %s" % (measure['shortName'], measure['validDateTime'], measure['validityDateTime'])
+        for lat, lon, val in zip(measure['lats'], measure['lons'], measure['values']):
+            print "%f N %f S = %f" % (lat, lon, val)
+
+
+wa = WeatherApi()
+
+# download forecast data for november 2017
+wa.get(from_date=date(2017, 11, 1), to_date=date(2017, 11, 30),
+       target='nov2017-forecast.grib', request_type='forecast')
+
+# download actual weather data november 2017
+wa.get(from_date=date(2017, 11, 1), to_date=date(2017, 11, 30),
+       target='nov2017-actual.grib', request_type='actual')
+
 # query the downloaded data
 we = WeatherExtractor()
-we.load('jan2015-feb2015.grib')
+# load actual and forecasted weather data
+we.load(['nov2017-forecast.grib', 'nov2017-actual.grib'])
 
-# get actual weather on 2015-1-10, 2015-1-11 and 2015-1-12 by regions
-weather_result = we.get_actual(from_date=date(
-    2015, 1, 10), to_date=date(2015, 1, 12), aggtime='day', aggloc='region')
+""" Get forecasted data from 1-11-2017 for 2-11-2017, 3-11-2017 and 4-11-2017 for all grid points. """
+weather_data = we.get_forecast(base_date=date(2017, 11, 1), from_date=date(
+    2017, 11, 2), to_date=date(2017, 11, 4), aggtime='hour', aggloc='grid')
 
-lats, lons = weather_result.get_latslons()
+# print the result
+print_data(weather_data)
 
-# print results
-for measure_datetimerange, measure_param, measure_values in weather_result:
-    print "Measurement of %s at (%s, %s): " % (str(measure_param), str(measure_datetimerange[0]), str(measure_datetimerange[1]))
-    for lat, lon, val in zip(lats, lons, measure_values):
-        print "%f N %f S = %f" % (lat, lon, val)
+""" Get forecasted data from 1-11-2017 for 2-11-2017, 3-11-2017 and 4-11-2017 for 
+two specific points with latitudes and longitudes: (45.01, 13.00) and (46.00, 12.05) """
+points = [{'lat': 45.01, 'lon': 13.0}, {'lat': 46.0, 'lon': 12.05}]
+weather_data = we.get_forecast(base_date=date(2017, 11, 1), from_date=date(
+    2017, 11, 2), to_date=date(2017, 11, 4), aggtime='hour', aggloc='points', interp_points=points)
+# print the result
+print_data(weather_data)
+
+""" Get actual weather data for 2-11-2017, 3-11-2017 and 4-11-2017 for 
+two specific points with latitudes and longitudes: (45.01, 13.00) and (46.00, 12.05) """
+points = [{'lat': 45.01, 'lon': 13.0}, {'lat': 46.0, 'lon': 12.05}]
+weather_data = we.get_actual(from_date=date(
+    2017, 11, 2), to_date=date(2017, 11, 4), aggtime='hour', aggloc='points', interp_points=points)
+# print the result
+print_data(weather_data)

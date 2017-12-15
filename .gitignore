@@ -1,7 +1,21 @@
-.ecmwfapirc
-*.txt
-*.req
+# python
 *.pyc
+
+# access
+.ecmwfapirc
+*.req
+
+# editor
+.vscode
+
+# jupyter notebook
+.ipynb_checkpoints
+
+# setup
+build/
+
+# data
 *.grib
 
-build/
+# misc
+*.txt

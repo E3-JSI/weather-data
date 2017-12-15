@@ -1,30 +1,18 @@
 import ecmwfapi
 from datetime import date
 
+
 class EcmwfServer():
     """
         Connection to the ECMWF server.
         Assumes a valid .ecmwfapirc file is present in the same folder as the code.
     """
+
     def __init__(self):
         """
             Set up a connection to the MARS data service.
         """
         self.service = ecmwfapi.ECMWFService('mars')
-
-
-    def _check_request(self, request):
-        """
-            Check if request is ok for execution.
-        """
-        # request has to be complete
-        if not request.is_complete():
-            missing = [
-                param
-                for param in ['target', 'date', 'time', 'step']
-                if param not in request.params]
-            raise RuntimeError("Request has to be complete. Missing: %s" % ', '.join(missing))
-
 
     def _check_target(self, target):
         """Check if target file is ok."""
@@ -32,17 +20,17 @@ class EcmwfServer():
         try:
             open(target, 'a').close()
         except IOError as err:
-            raise IOError("Problem creating request target file: " + err.args[1])
-
+            raise IOError(
+                "Problem creating request target file: " + err.args[1])
 
     def list(self, request):
         """
             Check the request and report a summary of statistics about the requested data.
-            
+
             list with keyword 'output=cost' will generate a summary of the size, 
             number of fields and the storage information about the data: disk or tapes.
         """
-        self._check_request(request)
+        request.check()
 
         # check target file
         target = request.target
@@ -65,7 +53,7 @@ class EcmwfServer():
             Check and execute the request.
             Result of the request is stored to file 'target' in GRIB format.
         """
-        self._check_request(request)
+        request.check()
 
         # check target file
         target = request.target
@@ -84,12 +72,17 @@ ALLOWED_STEPS = set(range(0, 90) + range(90, 144, 3) + range(144, 246, 6))
 """
     Bounding boxes in [maxLat, minLon, minLat, maxLon] format.
 """
-class Area: Slovenia=[46.53, 13.23, 45.25, 16.36]
+
+
+class Area:
+    Slovenia = [46.53, 13.23, 45.25, 16.36]
+
 
 class WeatherReq():
     """
         A weather data request.
     """
+
     def __init__(self):
         # VARIABLE PARAMETERS
         # ===================
@@ -101,6 +94,10 @@ class WeatherReq():
         #   * filename where the requested data is dumped
         self.target = None
 
+        # request type:
+        #   * 'an' for actual weather or 'fc' for forecast
+        self.req_type = None
+
         # date:
         #   * "YYYY-MM-DD" or "YYYY-MM-DD/to/YYYY-MM-DD"
         #   * date or date range of the data
@@ -108,7 +105,9 @@ class WeatherReq():
         self.end_date = None
 
         # time:
-        #   * "00:00:00" or "12:00:00"
+        #   * "00:00:00" or "12:00:00" in case of forecast
+        #                   OR
+        #   * "00/06/12/18" in case of actual weather
         #   * the time (GMT) of the weather state on each day (at step 0)
         self.time = None
 
@@ -117,7 +116,6 @@ class WeatherReq():
         #   * time in hours for which the data is returned
         #   * step 0 is current weather state, step X is the forecasted weather state in X hours
         self.step = None
-
 
         # optional params
         # ----------------
@@ -129,19 +127,17 @@ class WeatherReq():
 
         # grid:
         #   * a lat/lon resolution of the data
-        #   * format is [latRes, lonRes] (e.g. [1.5, 1.5])  
+        #   * format is [latRes, lonRes] (e.g. [1.5, 1.5])
         self.grid = None
-
 
         # FIXED PARAMETERS
         self.params = {
-            "class"   : "od",
-            "expver"  : "1",
-            "levtype" : "sfc",
-            "param"   : "20.3/23.228/121.128/122.128/123.128/134.128/137.128/141.128/144.128/164.128/167.128/224.228/225.228/228.128/260015",
-            "stream"  : "oper",
-            "type"    : "fc"}
-
+            "class": "od",
+            "expver": "1",
+            "levtype": "sfc",
+            "param": "20.3/23.228/121.128/122.128/123.128/134.128/137.128/141.128/144.128/164.128/167.128/224.228/225.228/228.128/260015",
+            "stream": "oper"
+        }
 
     def __str__(self):
         """Strig representation of the request is simply the representation of its parameters."""
@@ -149,29 +145,52 @@ class WeatherReq():
         template = "{:%d} : {}" % max_k
 
         ret = "ECMWF MARS API request:\n"
-        ret += '\n'.join(template.format(param, val) for param, val in self.params.iteritems())
+        ret += '\n'.join(template.format(param, val)
+                         for param, val in self.params.iteritems())
         return ret
 
+    def check(self):
+        """ Check if request is consistent and has all the parameters needed for execution. """
+        if self.req_type is None:
+            raise RuntimeError('Request has a missing field: \'req_type\'')
+        if self.req_type not in ['fc', 'an']:
+            raise RuntimeError(
+                'Request has an unknown field value: \'req_type\'=%s' % self.req_type)
 
-    def is_complete(self):
-        """Does the request have all the parameters needed for execution."""
-        return self.target is not None and self.date is not None and \
-            self.time is not None and self.step is not None
+        if self.req_type == 'an':
+            if self.step is not None:
+                raise RuntimeError(
+                    'Actual weather request should not contain the field: \'steps\'')
+            for param in ['target', 'date', 'time']:
+                if param not in self.params:
+                    raise RuntimeError(
+                        'Request has a missing field: \'%s\'' % param)
+        elif self.req_type == 'fc':
+            for param in ['target', 'date', 'time', 'step']:
+                if param not in self.params:
+                    raise RuntimeError(
+                        'Request has a missing field: \'%s\'' % param)
 
+    def set_type(self, req_type):
+        assert req_type in ['fc', 'an']
+        self.req_type = req_type
+        self.params['type'] = self.req_type
 
     def set_target(self, target):
         """Set the target filename to dump the requested data."""
-        assert isinstance(target, str), "string expected as target filename, not %s" % repr(target)
+        assert isinstance(
+            target, str), "string expected as target filename, not %s" % repr(target)
 
         self.target = target
         self.params['target'] = target
 
-
-    def set_date(self, req_date, end_date = None):
+    def set_date(self, req_date, end_date=None):
         """Set the date (range) of the data."""
-        assert isinstance(req_date, date), "date object expected as input, not %s" % repr(req_date)
+        assert isinstance(
+            req_date, date), "date object expected as input, not %s" % repr(req_date)
         if end_date is not None:
-            assert isinstance(end_date, date), "date object expected as input, not %s" % repr(end_date)
+            assert isinstance(
+                end_date, date), "date object expected as input, not %s" % repr(end_date)
             assert req_date < end_date, "start date should be before end date"
 
         self.date = req_date
@@ -182,18 +201,20 @@ class WeatherReq():
             self.end_date = end_date
             self.params['date'] += '/to/%s' % str(end_date)
 
-
     def set_midnight(self):
         """Set measurement time to midnight (00:00:00)."""
         self.time = "00:00:00"
         self.params['time'] = "00:00:00"
-
 
     def set_noon(self):
         """Set measurement time to noon (12:00:00)."""
         self.time = "12:00:00"
         self.params['time'] = "12:00:00"
 
+    def set_analysis_cycle(self):
+        """ Default daily cycle for actual weather analysis. """
+        self.time = "00:00:00/06:00:00/12:00:00/18:00:00"
+        self.params['time'] = self.time
 
     def set_step(self, step):
         """Set the steps for which you want the weather state."""
@@ -202,37 +223,37 @@ class WeatherReq():
         for s in step:
             assert isinstance(s, int), "Each step should be an int."
         assert set(step).issubset(ALLOWED_STEPS), \
-            "Steps %s not possible. Step values can be: %s" % (sorted(set(step)-ALLOWED_STEPS), ALLOWED_STEPS)
+            "Steps %s not possible. Step values can be: %s" % (
+                sorted(set(step) - ALLOWED_STEPS), ALLOWED_STEPS)
 
         self.step = list(sorted(step))
         self.params['step'] = '/'.join(str(s) for s in self.step)
-
 
     def set_area(self, area):
         """Set the area for which you want the data. [N,W,S,E]"""
         assert isinstance(area, (list, tuple)), "Expectiong a list or tuple"
         assert len(area) == 4, "Expecting 4 values for area."
         for res in area:
-            assert isinstance(res, (int, float)), "Each area value should be an int or float."
+            assert isinstance(
+                res, (int, float)), "Each area value should be an int or float."
 
         assert check_area_ranges(area), "Expecting sane area borders."
 
         self.area = area
         self.params['area'] = '/'.join(str(x) for x in self.area)
 
-
     def set_grid(self, grid):
         """Set the lat/lon grid resolution of the data."""
         assert isinstance(grid, (list, tuple)), "Expectiong a list or tuple"
         assert len(grid) == 2, "Expecting 2 values for grid.."
         for res in grid:
-            assert isinstance(res, float), "Each grid resolution value should be a float."
+            assert isinstance(
+                res, float), "Each grid resolution value should be a float."
 
         self.grid = grid
         latRes = ('%f' % grid[0]).rstrip('0').rstrip('.')
         lonRes = ('%f' % grid[1]).rstrip('0').rstrip('.')
         self.params['grid'] = '%s/%s' % (latRes, lonRes)
-
 
     def to_req_str(self):
         """Transform the request into a string expected by the ECMWF service."""
@@ -244,4 +265,4 @@ def check_area_ranges(area):
     # unpack values
     N, W, S, E = area
     # check ranges and ordering
-    return -90 <= S < N <= 90  and -180 <= W < E <= 180
+    return -90 <= S < N <= 90 and -180 <= W < E <= 180
