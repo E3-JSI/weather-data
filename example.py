@@ -15,18 +15,14 @@ def print_data(weather_data):
 
 wa = WeatherApi()
 
-# download forecast data for november 2017
+# download data for november 2017
 wa.get(from_date=date(2017, 11, 1), to_date=date(2017, 11, 30),
-       target='nov2017-forecast.grib', request_type='forecast')
-
-# download actual weather data november 2017
-wa.get(from_date=date(2017, 11, 1), to_date=date(2017, 11, 30),
-       target='nov2017-actual.grib', request_type='actual')
+       target='nov2017.grib')
 
 # query the downloaded data
 we = WeatherExtractor()
 # load actual and forecasted weather data
-we.load(['nov2017-forecast.grib', 'nov2017-actual.grib'])
+we.load(['nov2017.grib'])
 
 """ Get forecasted data from 1-11-2017 for 2-11-2017, 3-11-2017 and 4-11-2017 for all grid points. """
 weather_data = we.get_forecast(base_date=date(2017, 11, 1), from_date=date(

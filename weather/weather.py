@@ -26,22 +26,28 @@ import pygrib
 from .request import Area, EcmwfServer, WeatherReq
 
 """
-    List of returned weather measurements:
-        Name:                                               Short Name:
-        Cloud base height                                   cbh
-        Maximum temperature at 2 metres in the last 6 hours mx2t6
-        Minimum temperature at 2 metres in the last 6 hours mn2t6
-        10 metre wind gust in the last 6 hours              10fg6
-        Surface pressure                                    sp
-        Total column water vapour                           tcwv
-        Snow depth                                          sd
-        Snowfall                                            sf
-        Total cloud cover                                   tcc
-        2 metre temperature                                 2t
-        Total precipitation                                 tp
+    Best estimation for actual weather is forecast with a base date on the current day.
+    
+    Parameters:
+    
+    2 metre dewpoint temperature
+    2 metre temperature
+    10 metre U wind component
+    10 metre V wind component
+    Direct solar radiation
+    Precipitation type
+    Snow depth
+    Sunshine duration* 
+    Surface net solar radiation
+    Surface pressure
+    Total cloud cover
+    Total precipitation*
+    Visibility
+    
+    *accumulated from the beginning of the forecast
 
     Warning:
-        * after 2015-5-13 number of parameters increases from 11 to 15
+        * after 2015-5-13 number of parameters changes
 """
 
 
@@ -152,6 +158,16 @@ class WeatherExtractor:
             # index by base date (date when the forecast was made)
             self.grib_msgs.set_index('validDateTime', drop=False, inplace=True)
             self.grib_msgs.sort_index(inplace=True)
+        
+        # extend the set of parameters
+        self.grib_msgs = self._extend_parameters(self.grib_msgs)
+
+
+    def _extend_parameters(self, grib_msgs):
+        """ Extend the set of weather parameters with ones calculated 
+        from base parameters.
+        """
+        pass
 
     def _latslons_from_dict(self, points):
         """ Get lattitudes and longtitudes from list of points. """
@@ -343,6 +359,8 @@ class WeatherExtractor:
     def get_actual(self, from_date, to_date, aggtime='hour', aggloc='grid', interp_points=None):
         """
         Get the actual weather for each day from a given time window.
+        Actual weather is actually a forecast made on given day - this is the best weather estimation
+        we can get.
 
         Args:
             from_date (datetime.date): start of the timewindow
@@ -369,14 +387,7 @@ class WeatherExtractor:
         req_period = self.grib_msgs.loc[from_date:to_date]
         tmp_result = req_period[req_period['validDateTime'].dt.date ==
                                 req_period['validityDateTime'].dt.date]
-        actual_data = tmp_result[tmp_result['type'] == 'an']
-
-        # get data about actual weather
-        if len(actual_data) == 0:
-            raise RuntimeWarning("No data about actual weather available!")
-        else:
-            tmp_result = actual_data
-
+        
         # drop 'type' column
         tmp_result.drop('type', axis=1, inplace=True)
 
@@ -424,10 +435,7 @@ class WeatherExtractor:
         # start with default (hourly) aggregation
         tmp_result = req_period[req_period['validityDateTime'].dt.date >= from_date]
         tmp_result = tmp_result[tmp_result['validityDateTime'].dt.date <= to_date]
-
-        # keep only forecast data
-        tmp_result = tmp_result[tmp_result['type'] == 'fc']
-
+        
         # drop 'type' column
         tmp_result.drop('type', axis=1, inplace=True)
 
@@ -455,8 +463,7 @@ class WeatherApi:
     def __init__(self):
         self.server = EcmwfServer()
 
-    def get(self, from_date, to_date, target, request_type='forecast', base_time='midnight',
-            steps=None, area='slovenia', grid=(0.25, 0.25)):
+    def get(self, from_date, to_date, target, base_time='midnight', steps=None, area='slovenia', grid=(0.25, 0.25)):
         """
         Execute a MARS request with given parameters and store the result to file 'target.grib'.
 
@@ -468,8 +475,7 @@ class WeatherApi:
         assert from_date <= to_date
 
         assert base_time in ['midnight', 'noon']
-        assert request_type in ['forecast', 'actual']
-
+        
         # create new mars request
         req = WeatherReq()
 
@@ -485,30 +491,25 @@ class WeatherApi:
         else:
             req.set_noon()
 
-        if request_type == 'actual':  # get actual weather
-            req.set_type('an')
-            req.set_analysis_cycle()  # overrides the time
-        elif request_type == 'forecast':  # get weather forecast
-            req.set_type('fc')
-            if steps is None:
-                    # assume base time is 'midnight'
-                    # base_date is the date the forecast was made
-                steps = []
+        if steps is None:
+            # assume base time is 'midnight'
+            # base_date is the date the forecast was made
+            steps = []
 
-                # current day + next three days
-                for day_off in range(4):
-                    steps += [day_off * 24 +
-                              hour_off for hour_off in [0, 6, 9, 12, 15, 18, 21]]
+            # current day + next three days
+            for day_off in range(4):
+                steps += [day_off * 24 +
+                            hour_off for hour_off in [0, 6, 9, 12, 15, 18, 21]]
 
-                # other 4 days
-                for day_off in range(4, 8):
-                    steps += [day_off * 24 +
-                              hour_off for hour_off in [0, 6, 12, 18]]
+            # other 4 days
+            for day_off in range(4, 8):
+                steps += [day_off * 24 +
+                            hour_off for hour_off in [0, 6, 12, 18]]
 
-                if base_time == 'noon':
-                    steps = [step for step in steps in step - 12 >= 0]
+            if base_time == 'noon':
+                steps = [step for step in steps in step - 12 >= 0]
 
-            req.set_step(steps)
+        req.set_step(steps)
 
         # set area
         if area == 'slovenia':
