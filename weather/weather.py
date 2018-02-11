@@ -160,14 +160,14 @@ class WeatherExtractor:
             self.grib_msgs.sort_index(inplace=True)
         
         # extend the set of parameters
-        self.grib_msgs = self._extend_parameters(self.grib_msgs)
+        self.grib_msgs = WeatherExtractor._extend_parameters(self.grib_msgs)
 
-
-    def _extend_parameters(self, grib_msgs):
+    @staticmethod
+    def _extend_parameters(grib_msgs):
         """ Extend the set of weather parameters with ones calculated 
         from base parameters.
         """
-        pass
+        return grib_msgs
 
     def _latslons_from_dict(self, points):
         """ Get lattitudes and longtitudes from list of points. """
