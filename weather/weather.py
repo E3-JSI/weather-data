@@ -28,23 +28,37 @@ from .request import Area, EcmwfServer, WeatherReq
 """
     Best estimation for actual weather is forecast with a base date on the current day.
     
-    Parameters:
+    Parameter name:                 Short name:
     
-    2 metre dewpoint temperature
-    2 metre temperature
-    10 metre U wind component
-    10 metre V wind component
-    Direct solar radiation
-    Precipitation type
-    Snow depth
-    Sunshine duration* 
-    Surface net solar radiation
-    Surface pressure
-    Total cloud cover
-    Total precipitation*
-    Visibility
+    2 metre dewpoint temperature        2d
+    2 metre temperature                 2t
+    10 metre U wind component           10u
+    10 metre V wind component           10v
+    Direct solar radiation              dsrp
+    Precipitation type**                ptype
+    Snow depth                          sd
+    Snow fall                           sf
+    Sunshine duration*                  sund
+    Surface net solar radiation         ssr  
+    Surface pressure                    sp
+    Total cloud cover                   tcc
+    Total precipitation*                tp
+    Visibility [m]                      vis
     
+    Wind speed*** [m/s]                 ws
+
     *accumulated from the beginning of the forecast
+    **mean aggregation of this parameter makes no sense
+    ***calculated parameter
+
+    Precipitation type (ptype) code table:
+        0 = No precipitation
+        1 = Rain
+        3 = Freezing rain (i.e. supercooled)
+        5 = Snow
+        6 = Wet snow (i.e. starting to melt)
+        7 = Mixture of rain and snow
+        8 = Ice pellets
 
     Warning:
         * after 2015-5-13 number of parameters changes
@@ -151,10 +165,7 @@ class WeatherExtractor:
                 self.grib_msgs = curr_msgs
             else:
                 self.grib_msgs = pd.concat([self.grib_msgs, curr_msgs])
-
-            # remove 'ptype'
-            self.grib_msgs = self.grib_msgs[self.grib_msgs['shortName'] != 'ptype']
-
+           
             # index by base date (date when the forecast was made)
             self.grib_msgs.set_index('validDateTime', drop=False, inplace=True)
             self.grib_msgs.sort_index(inplace=True)
@@ -167,6 +178,10 @@ class WeatherExtractor:
         """ Extend the set of weather parameters with ones calculated 
         from base parameters.
         """
+        #curr_params = np.unique(grib_msgs.shortName)
+        #if '10u' in curr_params and '10v' in curr_params and not 'ws' in curr_params:
+        # add wind speed
+        #    pass
         return grib_msgs
 
     def _latslons_from_dict(self, points):
@@ -499,7 +514,7 @@ class WeatherApi:
             # current day + next three days
             for day_off in range(4):
                 steps += [day_off * 24 +
-                            hour_off for hour_off in [0, 6, 9, 12, 15, 18, 21]]
+                            hour_off for hour_off in [0, 3, 6, 9, 12, 15, 18, 21]]
 
             # other 4 days
             for day_off in range(4, 8):
