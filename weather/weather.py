@@ -165,23 +165,43 @@ class WeatherExtractor:
                 self.grib_msgs = curr_msgs
             else:
                 self.grib_msgs = pd.concat([self.grib_msgs, curr_msgs])
-           
-            # index by base date (date when the forecast was made)
-            self.grib_msgs.set_index('validDateTime', drop=False, inplace=True)
-            self.grib_msgs.sort_index(inplace=True)
-        
+
+            # reset index
+            self.grib_msgs.reset_index(drop=True, inplace=True)
+            
         # extend the set of parameters
         self.grib_msgs = WeatherExtractor._extend_parameters(self.grib_msgs)
 
+        # index by base date (date when the forecast was made)
+        self.grib_msgs.set_index('validDateTime', drop=False, inplace=True)
+        self.grib_msgs.sort_index(inplace=True)
+    
     @staticmethod
     def _extend_parameters(grib_msgs):
         """ Extend the set of weather parameters with ones calculated 
         from base parameters.
         """
-        #curr_params = np.unique(grib_msgs.shortName)
-        #if '10u' in curr_params and '10v' in curr_params and not 'ws' in curr_params:
-        # add wind speed
-        #    pass
+        curr_params = np.unique(grib_msgs.shortName)
+        if ('10u' in curr_params) and '10v' in curr_params and not 'ws' in curr_params:
+            # print "Calculating parameter Wind speed (ws)"
+            grp = grib_msgs[(grib_msgs.shortName == '10u') | (grib_msgs.shortName == '10v')].reset_index(drop=True).groupby(['validDateTime', 'validityDateTime'])
+
+            new_msgs = []
+            for group in grp.groups:
+                tf = grp.get_group(group)
+                new_msgs.append({
+                    'shortName': u'ws',
+                    'values': np.sqrt(np.sum(v*v for v in tf['values'])),
+                    'validDateTime': tf['validDateTime'].iloc[0],
+                    'validityDateTime': tf['validityDateTime'].iloc[0],
+                    'lats': tf['lats'].iloc[0],
+                    'lons': tf['lons'].iloc[0],
+                    'type': tf['type'].iloc[0]
+                })
+
+            new_msgs = pd.DataFrame.from_dict(new_msgs)
+            grib_msgs = grib_msgs.append(new_msgs)
+        
         return grib_msgs
 
     def _latslons_from_dict(self, points):
