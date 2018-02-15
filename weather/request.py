@@ -94,10 +94,6 @@ class WeatherReq():
         #   * filename where the requested data is dumped
         self.target = None
 
-        # request type:
-        #   * 'an' for actual weather or 'fc' for forecast
-        self.req_type = None
-
         # date:
         #   * "YYYY-MM-DD" or "YYYY-MM-DD/to/YYYY-MM-DD"
         #   * date or date range of the data
@@ -107,7 +103,6 @@ class WeatherReq():
         # time:
         #   * "00:00:00" or "12:00:00" in case of forecast
         #                   OR
-        #   * "00/06/12/18" in case of actual weather
         #   * the time (GMT) of the weather state on each day (at step 0)
         self.time = None
 
@@ -133,10 +128,11 @@ class WeatherReq():
         # FIXED PARAMETERS
         self.params = {
             "class": "od",
+            "stream": "oper",
             "expver": "1",
+            "type": "fc",
             "levtype": "sfc",
-            "param": "20.3/23.228/121.128/122.128/123.128/134.128/137.128/141.128/144.128/164.128/167.128/224.228/225.228/228.128/260015",
-            "stream": "oper"
+            "param": "20.3/47.128/134.128/141.128/144.128/164.128/165.128/166.128/167.128/168.128/176.128/178.128/189.128/228.128/260015"
         }
 
     def __str__(self):
@@ -151,30 +147,10 @@ class WeatherReq():
 
     def check(self):
         """ Check if request is consistent and has all the parameters needed for execution. """
-        if self.req_type is None:
-            raise RuntimeError('Request has a missing field: \'req_type\'')
-        if self.req_type not in ['fc', 'an']:
-            raise RuntimeError(
-                'Request has an unknown field value: \'req_type\'=%s' % self.req_type)
-
-        if self.req_type == 'an':
-            if self.step is not None:
+        for param in ['target', 'date', 'time', 'step']:
+            if param not in self.params:
                 raise RuntimeError(
-                    'Actual weather request should not contain the field: \'steps\'')
-            for param in ['target', 'date', 'time']:
-                if param not in self.params:
-                    raise RuntimeError(
-                        'Request has a missing field: \'%s\'' % param)
-        elif self.req_type == 'fc':
-            for param in ['target', 'date', 'time', 'step']:
-                if param not in self.params:
-                    raise RuntimeError(
-                        'Request has a missing field: \'%s\'' % param)
-
-    def set_type(self, req_type):
-        assert req_type in ['fc', 'an']
-        self.req_type = req_type
-        self.params['type'] = self.req_type
+                    'Request has a missing field: \'%s\'' % param)
 
     def set_target(self, target):
         """Set the target filename to dump the requested data."""
@@ -210,11 +186,6 @@ class WeatherReq():
         """Set measurement time to noon (12:00:00)."""
         self.time = "12:00:00"
         self.params['time'] = "12:00:00"
-
-    def set_analysis_cycle(self):
-        """ Default daily cycle for actual weather analysis. """
-        self.time = "00:00:00/06:00:00/12:00:00/18:00:00"
-        self.params['time'] = self.time
 
     def set_step(self, step):
         """Set the steps for which you want the weather state."""
