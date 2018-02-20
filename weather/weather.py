@@ -177,6 +177,13 @@ class WeatherExtractor:
         self.grib_msgs.set_index('validDateTime', drop=False, inplace=True)
         self.grib_msgs.sort_index(inplace=True)
     
+    def store(self, filepath):
+        if not filepath.endswith('.pkl'):
+            filepath += '.pkl'
+        print "Saving weather data to: %s" % filepath
+        with open(filepath, 'wb') as f:
+            pickle.dump(self.grib_msgs, f)
+
     @staticmethod
     def _extend_parameters(grib_msgs):
         """ Extend the set of weather parameters with ones calculated 
