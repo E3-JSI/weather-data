@@ -21,6 +21,7 @@ wa.get(from_date=date(2017, 11, 1), to_date=date(2017, 11, 30),
 
 # query the downloaded data
 we = WeatherExtractor()
+
 # load actual and forecasted weather data
 we.load(['nov2017.grib'])
 
@@ -44,5 +45,9 @@ two specific points with latitudes and longitudes: (45.01, 13.00) and (46.00, 12
 points = [{'lat': 45.01, 'lon': 13.0}, {'lat': 46.0, 'lon': 12.05}]
 weather_data = we.get_actual(from_date=date(
     2017, 11, 2), to_date=date(2017, 11, 4), aggtime='hour', aggloc='points', interp_points=points)
+
 # print the result
 print_data(weather_data)
+
+# store weather data in pickle format for faster loading in the future
+we.store('nov2017.pkl')
