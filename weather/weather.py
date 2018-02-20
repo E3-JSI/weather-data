@@ -44,7 +44,6 @@ from .request import Area, EcmwfServer, WeatherReq
     Total cloud cover                   tcc
     Total precipitation*                tp
     Visibility [m]                      vis
-    Top net solar radiation [IGNORE]    tsr
     
     Wind speed*** [m/s]                 ws
     Relative humidity*** [%]            rh
