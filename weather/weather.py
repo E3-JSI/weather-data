@@ -46,6 +46,7 @@ from .request import Area, EcmwfServer, WeatherReq
     Visibility [m]                      vis
     
     Wind speed*** [m/s]                 ws
+    Relative humidity*** [%]            rh
 
     *accumulated from the beginning of the forecast
     **mean aggregation of this parameter makes no sense
@@ -176,12 +177,20 @@ class WeatherExtractor:
         self.grib_msgs.set_index('validDateTime', drop=False, inplace=True)
         self.grib_msgs.sort_index(inplace=True)
     
+    def store(self, filepath):
+        if not filepath.endswith('.pkl'):
+            filepath += '.pkl'
+        print "Saving weather data to: %s" % filepath
+        with open(filepath, 'wb') as f:
+            pickle.dump(self.grib_msgs, f)
+
     @staticmethod
     def _extend_parameters(grib_msgs):
         """ Extend the set of weather parameters with ones calculated 
         from base parameters.
         """
         curr_params = np.unique(grib_msgs.shortName)
+        # calculate Wind speed [ws] parameter
         if ('10u' in curr_params) and '10v' in curr_params and not 'ws' in curr_params:
             # print "Calculating parameter Wind speed (ws)"
             grp = grib_msgs[(grib_msgs.shortName == '10u') | (grib_msgs.shortName == '10v')].reset_index(drop=True).groupby(['validDateTime', 'validityDateTime'])
@@ -199,6 +208,34 @@ class WeatherExtractor:
                     'type': tf['type'].iloc[0]
                 })
 
+            new_msgs = pd.DataFrame.from_dict(new_msgs)
+            grib_msgs = grib_msgs.append(new_msgs)
+
+        # calculate Relative humidity (rh) parameter
+        if '2t' in curr_params and '2d' in curr_params and not 'rh' in curr_params:
+            T0 = 273.15
+
+            # get dewpoint temperature and surface temperature
+            grp = grib_msgs[(grib_msgs.shortName == '2t') | (grib_msgs.shortName == '2d')].reset_index(drop=True).groupby(['validDateTime', 'validityDateTime'])
+
+            new_msgs = []
+            for group in grp.groups:
+                tf = grp.get_group(group)
+
+                T_surface = tf[tf.shortName == '2t'].iloc[0]['values'] - T0
+                T_dew = tf[tf.shortName == '2d'].iloc[0]['values'] - T0
+               
+                # calculate relative humidity using https://journals.ametsoc.org/doi/pdf/10.1175/BAMS-86-2-225
+                rh = 100*(np.exp((17.625*T_dew)/(243.04+T_dew))/np.exp((17.625*T_surface)/(243.04+T_surface))) 
+                new_msgs.append({
+                    'shortName': u'rh',
+                    'values': rh,
+                    'validDateTime': tf['validDateTime'].iloc[0],
+                    'validityDateTime': tf['validityDateTime'].iloc[0],
+                    'lats': tf['lats'].iloc[0],
+                    'lons': tf['lons'].iloc[0],
+                    'type': tf['type'].iloc[0]
+                })
             new_msgs = pd.DataFrame.from_dict(new_msgs)
             grib_msgs = grib_msgs.append(new_msgs)
         
