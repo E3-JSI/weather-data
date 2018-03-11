@@ -189,6 +189,7 @@ class WeatherExtractor:
         """ Extend the set of weather parameters with ones calculated 
         from base parameters.
         """
+        print "Extending parameters..."
         curr_params = np.unique(grib_msgs.shortName)
         # calculate Wind speed [ws] parameter
         if ('10u' in curr_params) and '10v' in curr_params and not 'ws' in curr_params:
@@ -221,7 +222,6 @@ class WeatherExtractor:
             new_msgs = []
             for group in grp.groups:
                 tf = grp.get_group(group)
-
                 T_surface = tf[tf.shortName == '2t'].iloc[0]['values'] - T0
                 T_dew = tf[tf.shortName == '2d'].iloc[0]['values'] - T0
                
@@ -523,6 +523,111 @@ class WeatherExtractor:
 
         return tmp_result
 
+    def export(self, filename, dates, interp_points, weather_params='all', forecast_offsets='all', regions='all'):
+        """
+        Export weather features for each date from dates to .tsv file.
+
+        Args:
+            filename (str): name of target file
+            dates (list): list of dates (datetime.date)  
+            interp_points (list of dicts): list of interpolation points with each point represented
+                as dict with fields 'lon' and 'lat' representing longtitude and lattitude 
+
+        Returns:
+            pandas.DataFrame: resulting object with weather measurements
+        """
+        # get interpolation points
+        lats, lons = self.grib_msgs.iloc[0]['lats'], self.grib_msgs.iloc[0]['lons']
+        target_lats, target_lons = self._latslons_from_dict(interp_points)
+        # only keep the values from closest point to each target
+        closest = self._calc_closest(target_lats, target_lons, lats, lons)
+        # weather features frame
+        tf = self.grib_msgs
+        # index on the predicted date
+        tf = tf.set_index('validityDateTime', drop=False)
+        tf = tf.sort_index()
+        # feature collection
+        feat_rows = list()
+        # used weather parameters
+        if weather_params == 'all': weather_params = np.unique(tf['shortName'])
+        # used weather regions
+        if regions == 'all': regions = list(range(len(interp_points)))
+        # used forecast base_date offsets
+        if forecast_offsets == 'all': forecast_offsets = list(range(-11, 1))
+        # interpolate all values
+        tf['values'] = tf['values'].apply(lambda x: x[closest])
+        for curr_date_pos, curr_date in enumerate(dates):
+            # process current date
+            start_day = datetime.datetime.combine(curr_date, datetime.time(0,0))
+            end_day = datetime.datetime.combine(curr_date, datetime.time(23,59))
+            # forecast data regarding current date
+            cf = tf.loc[start_day:end_day]
+            # group by all unique dates on which forecast was made and weather parameters
+            date_params_groups = cf.groupby(['validDateTime', 'shortName'])
+            for group_name in date_params_groups.groups:
+                pdf = date_params_groups.get_group(group_name)
+                # are we interested in the forecast from day_offset days before?
+                base_date = pdf['validDateTime'].iloc[0].date()
+                day_offset = (base_date - curr_date).days
+                if day_offset not in forecast_offsets: continue
+                # forecasted params from base_date for date
+                param_name = pdf.iloc[0]['shortName']
+                # WARNING: there is something wrong with ptype
+                if param_name == 'ptype':
+                    continue
+                # are we interested in this parameter?
+                if param_name not in weather_params: continue
+                # feature prefix
+                feat_prefix = 'WEATHERFC%s%03d%s' % ('+' if day_offset >= 0 else '-', abs(day_offset), param_name)
+                # describe accumulated parameter 
+                if param_name in ['sund', 'tp', 'sf']: # sun duration, total percitipation, snow fall
+                    for from_hour, to_hour in [(0, 6), (6, 12), (12, 18), (6, 18)]:
+                        cum_from = pdf.loc[datetime.time(from_hour):datetime.time(from_hour)]
+                        if len(cum_from) == 0:
+                            print "base_date: ", base_date, " curr_date: ", curr_date, " param_name: ", param_name, " at: ", from_hour, " missing!"
+                            continue
+                        else:
+                            cum_from = cum_from.iloc[0]['values']
+                        
+                        cum_to = pdf.loc[datetime.time(to_hour):datetime.time(to_hour)]
+                        if len(cum_to) == 0:
+                            print "base_date: ", base_date, " curr_date: ", curr_date, " param_name: ", param_name, " at: ", from_hour, " missing!"
+                            continue
+                        else:
+                            cum_to = cum_to.iloc[0]['values']
+                        
+                        for reg in regions:
+                            feat_rows.append({
+                                'validDate': curr_date,
+                                'dayOffset': day_offset,
+                                'region': reg,
+                                'shortName': param_name,
+                                'fromHour': from_hour,
+                                'toHour': to_hour,
+                                'value': cum_to[reg] - cum_from[reg],
+                                'featureName': '%s%03dCUM%02d-%02d' % (feat_prefix, reg, from_hour, to_hour),
+                                'aggFunc': 'cum'
+                            })
+                # describe instant parameter
+                elif param_name in ['2t', 'ws', 'rh', 'sd', 'tcc'] : # temperature, wind-speed, relative humidity, snow depth
+                    for func_name, func in zip(['min', 'mean', 'max'], [np.min, np.mean, np.max]):
+                        for from_hour, to_hour in [(0, 6), (6, 12), (12, 18), (6, 18)]:
+                            range_values = pdf.loc[datetime.time(from_hour, 0):datetime.time(to_hour, 0)]
+                            for reg in regions:
+                                feat_rows.append({
+                                    'validDate': curr_date,
+                                    'dayOffset': day_offset,
+                                    'region': reg,
+                                    'shortName': param_name,
+                                    'fromHour': from_hour,
+                                    'toHour': to_hour,
+                                    'value': func(range_values['values'].apply(lambda x: x[reg])),
+                                    'featureName': '%s%03d%s%02d-%02d' % (feat_prefix, reg, func_name.upper(), from_hour, to_hour),
+                                    'aggFunc': func_name
+                                })
+        
+        feat_df = pd.DataFrame.from_dict(feat_rows)
+        feat_df.to_csv(filename, sep='\t', index=False)
 
 class WeatherApi:
     """
