@@ -523,7 +523,7 @@ class WeatherExtractor:
 
         return tmp_result
 
-    def export(self, filename, dates, interp_points, weather_params='all', forecast_offsets='all', regions='all'):
+    def export(self, filename, interp_points, weather_params='all', forecast_offsets='all', regions='all'):
         """
         Export weather features for each date from dates to .tsv file.
 
@@ -536,6 +536,8 @@ class WeatherExtractor:
         Returns:
             pandas.DataFrame: resulting object with weather measurements
         """
+        # export all dates
+        dates = np.unique(sorted([dt.date() for dt in self.grib_msgs.validDateTime]))
         # get interpolation points
         lats, lons = self.grib_msgs.iloc[0]['lats'], self.grib_msgs.iloc[0]['lons']
         target_lats, target_lons = self._latslons_from_dict(interp_points)
