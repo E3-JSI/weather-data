@@ -523,6 +523,50 @@ class WeatherExtractor:
 
         return tmp_result
 
+    def export_qminer(self, filename, interp_points):
+        """
+        Export weather features for each date from dates to .tsv file.
+
+        Args:
+            filename (str): name of target file
+            interp_points (list of dicts): list of interpolation points with each point represented
+                as dict with fields 'lon' and 'lat' representing longtitude and lattitude 
+        Returns:
+            pandas.DataFrame: resulting object with weather measurements
+        """
+        # export all dates
+        dates = np.unique(sorted([dt.date() for dt in self.grib_msgs.validDateTime]))
+        # get interpolation points
+        lats, lons = self.grib_msgs.iloc[0]['lats'], self.grib_msgs.iloc[0]['lons']
+        target_lats, target_lons = self._latslons_from_dict(interp_points)
+        # only keep the values from closest point to each target
+        closest = self._calc_closest(target_lats, target_lons, lats, lons)
+        # weather features frame
+        tf = self.grib_msgs
+        # index on the predicted date
+        tf = tf.set_index('validityDateTime', drop=False)
+        tf = tf.sort_index()
+        # WARNING: there is something wrong with ptype parameter
+        tf = tf[tf.shortName != 'ptype']
+        # interpolate all values
+        tf['values'] = tf['values'].apply(lambda x: x[closest])
+        
+        # generate new dataframe
+        rf = pd.DataFrame()
+        rf['param'] = tf['shortName']
+        rf['timestamp'] = tf['validityDateTime']
+        rf['dayOffset'] = (tf['validityDateTime'] - tf['validDateTime']).apply(lambda x: x.days)
+        
+        # generate region values
+        for i in range(len(interp_points)):
+            rf[str(i)] = tf['values'].apply(lambda x: x[i])
+        # transform region values from columns to rows
+        rf = pd.melt(rf, id_vars=['param', 'timestamp', 'dayOffset'], var_name='region', value_name='value')
+        rf['region'] = pd.to_numeric(rf['region'])
+        
+        rf.sort_values(by=['timestamp', 'region'], inplace=True)
+        rf.to_csv(filename, sep='\t', index=False)
+
     def export(self, filename, interp_points, weather_params='all', forecast_offsets='all', regions='all'):
         """
         Export weather features for each date from dates to .tsv file.
