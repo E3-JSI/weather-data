@@ -34,7 +34,6 @@ from .request import Area, EcmwfServer, WeatherReq
     2 metre temperature                 2t
     10 metre U wind component           10u
     10 metre V wind component           10v
-    Direct solar radiation              dsrp
     Precipitation type**                ptype
     Snow depth                          sd
     Snow fall                           sf
