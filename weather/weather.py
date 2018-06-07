@@ -693,9 +693,9 @@ class WeatherApi:
             base_time (str): 'midnight' or 'noon'
         """
         assert isinstance(from_date, datetime.date)
-        assert to_date is None or isinstance(to_date, datetime.date)
-        assert from_date <= to_date
-
+        if to_date is not None:
+            assert isinstance(to_date, datetime.date)
+            assert from_date <= to_date
         assert base_time in ['midnight', 'noon']
         
         # create new mars request
