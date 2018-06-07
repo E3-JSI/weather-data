@@ -685,7 +685,7 @@ class WeatherApi:
     def __init__(self):
         self.server = EcmwfServer()
 
-    def get(self, from_date, to_date, target, base_time='midnight', steps=None, area='slovenia', grid=(0.25, 0.25)):
+    def get(self, from_date, target, to_date=None, base_time='midnight', steps=None, area='slovenia', grid=(0.25, 0.25)):
         """
         Execute a MARS request with given parameters and store the result to file 'target.grib'.
 
@@ -693,7 +693,7 @@ class WeatherApi:
             base_time (str): 'midnight' or 'noon'
         """
         assert isinstance(from_date, datetime.date)
-        assert isinstance(to_date, datetime.date)
+        assert to_date is None or isinstance(to_date, datetime.date)
         assert from_date <= to_date
 
         assert base_time in ['midnight', 'noon']
