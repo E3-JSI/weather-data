@@ -27,9 +27,9 @@ from .request import Area, EcmwfServer, WeatherReq
 
 """
     Best estimation for actual weather is forecast with a base date on the current day.
-    
+
     Parameter name:                 Short name:
-    
+
     2 metre dewpoint temperature        2d
     2 metre temperature                 2t
     10 metre U wind component           10u
@@ -38,12 +38,12 @@ from .request import Area, EcmwfServer, WeatherReq
     Snow depth                          sd
     Snow fall                           sf
     Sunshine duration*                  sund
-    Surface net solar radiation         ssr  
+    Surface net solar radiation         ssr
     Surface pressure                    sp
     Total cloud cover                   tcc
     Total precipitation*                tp
     Visibility [m]                      vis
-    
+
     Wind speed*** [m/s]                 ws
     Relative humidity*** [%]            rh
 
@@ -114,8 +114,8 @@ class WeatherExtractor:
 
         Warning:
             after 2015-5-13 number of parameters increases from 11 to 15 and
-            additional parameter 'ptype' which disturbs the indexing 
-            (because of inconsistent 'validDateTime') sneaks in 
+            additional parameter 'ptype' which disturbs the indexing
+            (because of inconsistent 'validDateTime') sneaks in
         """
 
         def _load_from_grib(filepath, append=False):
@@ -168,14 +168,14 @@ class WeatherExtractor:
 
             # reset index
             self.grib_msgs.reset_index(drop=True, inplace=True)
-            
+
         # extend the set of parameters
         self.grib_msgs = WeatherExtractor._extend_parameters(self.grib_msgs)
 
         # index by base date (date when the forecast was made)
         self.grib_msgs.set_index('validDateTime', drop=False, inplace=True)
         self.grib_msgs.sort_index(inplace=True)
-    
+
     def store(self, filepath):
         if not filepath.endswith('.pkl'):
             filepath += '.pkl'
@@ -185,7 +185,7 @@ class WeatherExtractor:
 
     @staticmethod
     def _extend_parameters(grib_msgs):
-        """ Extend the set of weather parameters with ones calculated 
+        """ Extend the set of weather parameters with ones calculated
         from base parameters.
         """
         print "Extending parameters..."
@@ -223,9 +223,9 @@ class WeatherExtractor:
                 tf = grp.get_group(group)
                 T_surface = tf[tf.shortName == '2t'].iloc[0]['values'] - T0
                 T_dew = tf[tf.shortName == '2d'].iloc[0]['values'] - T0
-               
+
                 # calculate relative humidity using https://journals.ametsoc.org/doi/pdf/10.1175/BAMS-86-2-225
-                rh = 100*(np.exp((17.625*T_dew)/(243.04+T_dew))/np.exp((17.625*T_surface)/(243.04+T_surface))) 
+                rh = 100*(np.exp((17.625*T_dew)/(243.04+T_dew))/np.exp((17.625*T_surface)/(243.04+T_surface)))
                 new_msgs.append({
                     'shortName': u'rh',
                     'values': rh,
@@ -237,7 +237,7 @@ class WeatherExtractor:
                 })
             new_msgs = pd.DataFrame.from_dict(new_msgs)
             grib_msgs = grib_msgs.append(new_msgs)
-        
+
         return grib_msgs
 
     def _latslons_from_dict(self, points):
@@ -322,7 +322,7 @@ class WeatherExtractor:
             # hhmm format
             return datetime.datetime.combine(tmp_date, datetime.time(int(time_str[:2]), int(time_str[2:])))
 
-    def _aggregate_points(self, weather_result, aggloc, aggtype='one', interp_points=None):
+    def _aggregate_points(self, weather_result, aggloc, aggtype='one', interp_points=None, bounding_box=None):
         """
         Do an interpolation of measurement values for target points (given with target_lats and target_lons)
         from weather_result points.
@@ -341,7 +341,7 @@ class WeatherExtractor:
         Returns:
             pandas.DataFrame: resulting object with interpolated points
         """
-        assert aggloc in ['grid', 'points', 'country']
+        assert aggloc in ['grid', 'points', 'country', 'bbox']
         assert aggtype in ['one', 'mean']
         if aggloc == 'points':
             assert interp_points is not None
@@ -349,12 +349,42 @@ class WeatherExtractor:
 
         lats, lons = weather_result['lats'].iloc[0], weather_result['lons'].iloc[0]
 
+        if aggloc == 'bbox':
+            assert bounding_box is not None, "bounding box not given"
+            assert len(bounding_box) == 2 and len(bounding_box[0]) == 2 and len(bounding_box[1]) == 2, \
+                "Wrong bounding box input structure"
+            # get bounding box borders
+            bb_min_lat = min(bounding_box[0][0], bounding_box[1][0])
+            bb_max_lat = max(bounding_box[0][0], bounding_box[1][0])
+            bb_min_lon = min(bounding_box[0][1], bounding_box[1][1])
+            bb_max_lon = max(bounding_box[0][1], bounding_box[1][1])
+            # get data borders
+            min_lat, max_lat = min(lats), max(lats)
+            min_lon, max_lon = min(lons), max(lons)
+            # check if bounding box is within data
+            assert min_lat <= bb_min_lat <= max_lat, "bounding box must be within data area"
+            assert min_lat <= bb_max_lat <= max_lat, "bounding box must be within data area"
+            assert min_lon <= bb_min_lon <= max_lon, "bounding box must be within data area"
+            assert min_lon <= bb_max_lon <= max_lon, "bounding box must be within data area"
+            # filter out bounding box points
+            tmp_lats, tmp_lons = [], []
+            for lat, lon in zip(lats, lons):
+                if bb_min_lat <= lat <= bb_max_lat and bb_min_lon <= lon <= bb_max_lon:
+                    tmp_lats.append(lat)
+                    tmp_lons.append(lon)
+            assert len(tmp_lats) > 0 and len(tmp_lons) > 0, "bounding box contains no points"
+            lats, lons = np.array(tmp_lats), np.array(tmp_lons)
+
         if aggloc == 'grid':  # no aggregation
             return weather_result
         elif aggloc == 'points':
             target_lats, target_lons = interp_points[0], interp_points[1]
         elif aggloc == 'country':  # center of slovenia
             target_lats, target_lons = np.array([46.1512]), np.array([14.9955])
+        elif aggloc == 'bbox': # aggregate over bounding box
+            # compute mid point of bounding box
+            mid_bbox = [0.5 * (bb_min_lat + bb_max_lat), 0.5 * (bb_min_lon + bb_max_lon)]
+            target_lats, target_lons = np.array([mid_bbox[0]]), np.array([mid_bbox[1]])
 
         if aggtype == 'one':
             # each target point has only one closest grid point
@@ -427,7 +457,7 @@ class WeatherExtractor:
 
         return tmp_result
 
-    def get_actual(self, from_date, to_date, aggtime='hour', aggloc='grid', interp_points=None):
+    def get_actual(self, from_date, to_date, aggtime='hour', aggloc='grid', interp_points=None, bounding_box=None):
         """
         Get the actual weather for each day from a given time window.
         Actual weather is actually a forecast made on given day - this is the best weather estimation
@@ -437,9 +467,12 @@ class WeatherExtractor:
             from_date (datetime.date): start of the timewindow
             to_date (datetime.date): end of the timewindow
             aggtime (str): time aggregation level; can be 'hour', 'day' or 'week'
-            aggloc (str): location aggregation level; can be 'country', 'points' or 'grid'
+            aggloc (str): location aggregation level; can be country', 'points', 'grid' or 'bbox'
             interp_points (list of dicts): list of interpolation points with each point represented
                 as dict with fields 'lon' and 'lat' representing longtitude and lattitude if aggloc='points'
+            bounding_box ([[lat1,lon1], [lat2,lon2]]): corner points of the bounding box if aggloc='bounding_box',
+                order of the points is not important
+
         Returns:
             pandas.DataFrame: resulting object with weather measurements
         """
@@ -447,18 +480,22 @@ class WeatherExtractor:
         assert type(to_date) == datetime.date
         assert from_date <= to_date
         assert aggtime in ['hour', 'day', 'week']
-        assert aggloc in ['country', 'points', 'grid']
+        assert aggloc in ['country', 'points', 'grid', 'bbox']
 
         if aggloc == 'points':
             if interp_points is None:
                 raise ValueError(
                     "interp_points cannot be None if aggloc is set to 'points'.")
             interp_points = self._latslons_from_dict(interp_points)
+        if aggloc == 'bounding_box':
+            if bounding_box is None:
+                raise ValueError(
+                    "bounding_box cannot be None if aggloc is set to 'bounding_box'.")
 
         req_period = self.grib_msgs.loc[from_date:to_date]
         tmp_result = req_period[req_period['validDateTime'].dt.date ==
                                 req_period['validityDateTime'].dt.date]
-        
+
         # drop 'type' column
         tmp_result.drop('type', axis=1, inplace=True)
 
@@ -466,15 +503,17 @@ class WeatherExtractor:
         tmp_result.reset_index(drop=True, inplace=True)
 
         # point aggregation
+        aggtype = 'mean' if aggloc == 'bbox' else 'one'
         tmp_result = self._aggregate_points(
-            tmp_result, aggloc, interp_points=interp_points)
+            tmp_result, aggloc, aggtype=aggtype, interp_points=interp_points, bounding_box=bounding_box)
 
         # time aggregation
         tmp_result = self._aggregate_values(tmp_result, aggtime)
 
         return tmp_result
 
-    def get_forecast(self, base_date, from_date, to_date, aggtime='hour', aggloc='grid', interp_points=None):
+    def get_forecast(self, base_date, from_date, to_date, aggtime='hour', aggloc='grid', interp_points=None,
+        bounding_box=None):
         """
         Get the weather forecast for a given time window from a given date.
 
@@ -483,7 +522,11 @@ class WeatherExtractor:
             from_date (datetime.date): start of the time window
             end_date (datetime.date): end of the timewindow
             aggtime (str): time aggregation level; can be 'hour', 'day' or 'week'
-            aggloc (str): location aggregation level; can be 'country', 'points' or 'grid'
+            aggloc (str): location aggregation level; can be 'country', 'points', 'grid' or 'bbox'
+            interp_points (list of dicts): list of interpolation points with each point represented
+                as dict with fields 'lon' and 'lat' representing longtitude and lattitude if aggloc='points'
+            bounding_box ([[lat1,lon1], [lat2,lon2]]): corner points of the bounding box if aggloc='bbox',
+                order of the points is not important
 
         Returns:
             pandas.DataFrame: resulting object with weather measurements
@@ -493,20 +536,24 @@ class WeatherExtractor:
         assert type(to_date) == datetime.date
         assert base_date <= from_date <= to_date
         assert aggtime in ['hour', 'day', 'week']
-        assert aggloc in ['country', 'points', 'grid']
+        assert aggloc in ['country', 'points', 'grid', 'bbox']
 
         if aggloc == 'points':
             if interp_points is None:
                 raise ValueError(
                     "interp_points cannot be None if aggloc is set to 'points'.")
             interp_points = self._latslons_from_dict(interp_points)
+        if aggloc == 'bounding_box':
+            if bounding_box is None:
+                raise ValueError(
+                    "bounding_box cannot be None if aggloc is set to 'bounding_box'.")
 
         req_period = self.grib_msgs.loc[base_date]
 
         # start with default (hourly) aggregation
         tmp_result = req_period[req_period['validityDateTime'].dt.date >= from_date]
         tmp_result = tmp_result[tmp_result['validityDateTime'].dt.date <= to_date]
-        
+
         # drop 'type' column
         tmp_result.drop('type', axis=1, inplace=True)
 
@@ -514,8 +561,9 @@ class WeatherExtractor:
         tmp_result.reset_index(drop=True, inplace=True)
 
         # point aggregation
+        aggtype = 'mean' if aggloc == 'bbox' else 'one'
         tmp_result = self._aggregate_points(
-            tmp_result, aggloc, interp_points=interp_points)
+            tmp_result, aggloc, aggtype=aggtype, interp_points=interp_points, bounding_box=bounding_box)
 
         # time aggregation
         tmp_result = self._aggregate_values(tmp_result, aggtime)
@@ -529,7 +577,7 @@ class WeatherExtractor:
         Args:
             filename (str): name of target file
             interp_points (list of dicts): list of interpolation points with each point represented
-                as dict with fields 'lon' and 'lat' representing longtitude and lattitude 
+                as dict with fields 'lon' and 'lat' representing longtitude and lattitude
         Returns:
             pandas.DataFrame: resulting object with weather measurements
         """
@@ -549,20 +597,20 @@ class WeatherExtractor:
         tf = tf[tf.shortName != 'ptype']
         # interpolate all values
         tf['values'] = tf['values'].apply(lambda x: x[closest])
-        
+
         # generate new dataframe
         rf = pd.DataFrame()
         rf['param'] = tf['shortName']
         rf['timestamp'] = tf['validityDateTime']
         rf['dayOffset'] = (tf['validityDateTime'] - tf['validDateTime']).apply(lambda x: x.days)
-        
+
         # generate region values
         for i in range(len(interp_points)):
             rf[str(i)] = tf['values'].apply(lambda x: x[i])
         # transform region values from columns to rows
         rf = pd.melt(rf, id_vars=['param', 'timestamp', 'dayOffset'], var_name='region', value_name='value')
         rf['region'] = pd.to_numeric(rf['region'])
-        
+
         rf.sort_values(by=['timestamp', 'region'], inplace=True)
         rf.to_csv(filename, sep='\t', index=False)
 
@@ -572,9 +620,9 @@ class WeatherExtractor:
 
         Args:
             filename (str): name of target file
-            dates (list): list of dates (datetime.date)  
+            dates (list): list of dates (datetime.date)
             interp_points (list of dicts): list of interpolation points with each point represented
-                as dict with fields 'lon' and 'lat' representing longtitude and lattitude 
+                as dict with fields 'lon' and 'lat' representing longtitude and lattitude
 
         Returns:
             pandas.DataFrame: resulting object with weather measurements
@@ -624,7 +672,7 @@ class WeatherExtractor:
                 if param_name not in weather_params: continue
                 # feature prefix
                 feat_prefix = 'WEATHERFC%s%03d%s' % ('+' if day_offset >= 0 else '-', abs(day_offset), param_name)
-                # describe accumulated parameter 
+                # describe accumulated parameter
                 if param_name in ['sund', 'tp', 'sf']: # sun duration, total percitipation, snow fall
                     for from_hour, to_hour in [(0, 6), (6, 12), (12, 18), (6, 18)]:
                         cum_from = pdf.loc[datetime.time(from_hour):datetime.time(from_hour)]
@@ -633,14 +681,14 @@ class WeatherExtractor:
                             continue
                         else:
                             cum_from = cum_from.iloc[0]['values']
-                        
+
                         cum_to = pdf.loc[datetime.time(to_hour):datetime.time(to_hour)]
                         if len(cum_to) == 0:
                             print "base_date: ", base_date, " curr_date: ", curr_date, " param_name: ", param_name, " at: ", from_hour, " missing!"
                             continue
                         else:
                             cum_to = cum_to.iloc[0]['values']
-                        
+
                         for reg in regions:
                             feat_rows.append({
                                 'validDate': curr_date,
@@ -670,7 +718,7 @@ class WeatherExtractor:
                                     'featureName': '%s%03d%s%02d-%02d' % (feat_prefix, reg, func_name.upper(), from_hour, to_hour),
                                     'aggFunc': func_name
                                 })
-        
+
         feat_df = pd.DataFrame.from_dict(feat_rows)
         feat_df.to_csv(filename, sep='\t', index=False)
 
@@ -697,7 +745,7 @@ class WeatherApi:
             assert isinstance(to_date, datetime.date)
             assert from_date <= to_date
         assert base_time in ['midnight', 'noon']
-        
+
         # create new mars request
         req = WeatherReq()
 
