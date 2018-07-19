@@ -13,6 +13,7 @@ Todo:
     * add interpolation capability to WeatherExtractor._aggregate_points
 """
 import datetime
+import math
 import json
 import cPickle as pickle
 from collections import defaultdict
@@ -38,7 +39,6 @@ from .request import Area, EcmwfServer, WeatherReq
     Snow depth                          sd
     Snow fall                           sf
     Sunshine duration*                  sund
-    Surface net solar radiation         ssr
     Surface pressure                    sp
     Total cloud cover                   tcc
     Total precipitation*                tp
@@ -614,6 +614,39 @@ class WeatherExtractor:
         rf.sort_values(by=['timestamp', 'region'], inplace=True)
         rf.to_csv(filename, sep='\t', index=False)
 
+    def export_db(self, filename):
+        """
+        Export weather features to tsv file in MariaDB format.
+
+        Args:
+            filename (str): name of target file
+        Returns:
+            pandas.DataFrame: resulting object with weather measurements
+        """
+        # weather features frame
+        df = self.grib_msgs
+
+        def f(group):
+            item = group.iloc[0]
+            n = len(item.lats)
+
+            offset = math.trunc((item.validityDateTime - item.validDateTime).total_seconds() / 3600.0)
+            new_columns = {
+                'date': [item.validDateTime] * n,
+                'offset': [offset] * n,
+                'latitude': list(item.lats),
+                'longitude': list(item.lons)
+            }
+
+            for param_name, param_group in group.groupby('shortName'):
+                new_columns[param_name] = param_group.iloc[0]['values']
+
+            return pd.DataFrame(new_columns)
+
+        df = df.groupby(['validDateTime', 'validityDateTime'], as_index=False).apply(f)
+        df.sort_values(by=['date', 'offset'], inplace=True)
+        df.to_csv(filename, sep='\t', index=False)
+
     def export(self, filename, interp_points, weather_params='all', forecast_offsets='all', regions='all'):
         """
         Export weather features for each date from dates to .tsv file.
@@ -741,8 +774,8 @@ class WeatherApi:
             base_time (str): 'midnight' or 'noon'
         """
         assert isinstance(from_date, datetime.date)
+        assert isinstance(to_date, datetime.date) or to_date is None
         if to_date is not None:
-            assert isinstance(to_date, datetime.date)
             assert from_date <= to_date
         assert base_time in ['midnight', 'noon']
 
