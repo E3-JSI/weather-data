@@ -16,7 +16,7 @@ from __future__ import print_function
 import datetime
 import math
 import json
-import cPickle as pickle
+import pickle
 from collections import defaultdict
 
 import numpy as np
