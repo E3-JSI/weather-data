@@ -1,5 +1,6 @@
-from datetime import date
+from __future__ import print_function
 
+from datetime import date
 from weather.weather import WeatherExtractor, WeatherApi
 
 
@@ -8,9 +9,9 @@ def print_data(weather_data):
         # row is tuple (index, columns)
         measure = row[1]
 
-        print "Measurement of %s at from %s for %s" % (measure['shortName'], measure['validDateTime'], measure['validityDateTime'])
+        print("Measurement of %s at from %s for %s" % (measure['shortName'], measure['validDateTime'], measure['validityDateTime']))
         for lat, lon, val in zip(measure['lats'], measure['lons'], measure['values']):
-            print "%f N %f S = %f" % (lat, lon, val)
+            print("%f N %f S = %f" % (lat, lon, val))
 
 
 wa = WeatherApi()

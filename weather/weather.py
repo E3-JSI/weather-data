@@ -12,6 +12,7 @@ Example:
 Todo:
     * add interpolation capability to WeatherExtractor._aggregate_points
 """
+from __future__ import print_function
 import datetime
 import math
 import json
@@ -179,7 +180,7 @@ class WeatherExtractor:
     def store(self, filepath):
         if not filepath.endswith('.pkl'):
             filepath += '.pkl'
-        print "Saving weather data to: %s" % filepath
+        print("Saving weather data to: %s" % filepath)
         with open(filepath, 'wb') as f:
             pickle.dump(self.grib_msgs, f)
 
@@ -188,7 +189,7 @@ class WeatherExtractor:
         """ Extend the set of weather parameters with ones calculated
         from base parameters.
         """
-        print "Extending parameters..."
+        print("Extending parameters...")
         curr_params = np.unique(grib_msgs.shortName)
         # calculate Wind speed [ws] parameter
         if ('10u' in curr_params) and '10v' in curr_params and not 'ws' in curr_params:
@@ -266,10 +267,10 @@ class WeatherExtractor:
         num_target = target_lats.shape[0]
 
         closest = np.zeros(num_points, dtype=np.int)
-        for i in xrange(num_points):
+        for i in range(num_points):
             best_dist = (lats[i] - target_lats[0])**2 + \
                 (lons[i] - target_lons[0])**2
-            for j in xrange(1, num_target):
+            for j in range(1, num_target):
                 curr_dist = (lats[i] - target_lats[j])**2 + \
                     (lons[i] - target_lons[j])**2
                 if curr_dist < best_dist:
@@ -294,11 +295,11 @@ class WeatherExtractor:
         # get interpolated values
         result_values = np.zeros(num_targets)
         if aggtype == 'one':
-            for i in xrange(num_targets):
+            for i in range(num_targets):
                 result_values[i] = values[closest[i]]
         elif aggtype == 'mean':
             result_count = np.zeros(num_targets)
-            for i in xrange(num_original):
+            for i in range(num_original):
                 result_values[closest[i]] += values[i]
                 result_count[closest[i]] += 1.
             result_count[result_count == 0] = 1.  # avoid dividing by zero
@@ -710,14 +711,14 @@ class WeatherExtractor:
                     for from_hour, to_hour in [(0, 6), (6, 12), (12, 18), (6, 18)]:
                         cum_from = pdf.loc[datetime.time(from_hour):datetime.time(from_hour)]
                         if len(cum_from) == 0:
-                            print "base_date: ", base_date, " curr_date: ", curr_date, " param_name: ", param_name, " at: ", from_hour, " missing!"
+                            print("base_date: ", base_date, " curr_date: ", curr_date, " param_name: ", param_name, " at: ", from_hour, " missing!")
                             continue
                         else:
                             cum_from = cum_from.iloc[0]['values']
 
                         cum_to = pdf.loc[datetime.time(to_hour):datetime.time(to_hour)]
                         if len(cum_to) == 0:
-                            print "base_date: ", base_date, " curr_date: ", curr_date, " param_name: ", param_name, " at: ", from_hour, " missing!"
+                            print("base_date: ", base_date, " curr_date: ", curr_date, " param_name: ", param_name, " at: ", from_hour, " missing!")
                             continue
                         else:
                             cum_to = cum_to.iloc[0]['values']

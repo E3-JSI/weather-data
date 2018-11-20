@@ -67,7 +67,7 @@ class EcmwfServer():
 
 
 # the set of allowed steps in the request
-ALLOWED_STEPS = set(range(0, 90) + range(90, 144, 3) + range(144, 246, 6))
+ALLOWED_STEPS = set(list(range(0, 90)) + list(range(90, 144, 3)) + list(range(144, 246, 6)))
 
 """
     Bounding boxes in [maxLat, minLon, minLat, maxLon] format.
