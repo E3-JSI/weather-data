@@ -1,7 +1,7 @@
+from __future__ import print_function
+
 import ecmwfapi
 from datetime import date
-
-
 class EcmwfServer():
     """
         Connection to the ECMWF server.
@@ -44,9 +44,9 @@ class EcmwfServer():
 
         # print the stats
         with open(target) as infile:
-            print "=== request info ==="
-            print infile.read()
-            print "===================="
+            print("=== request info ===")
+            print(infile.read())
+            print("====================")
 
     def retrieve(self, request):
         """
