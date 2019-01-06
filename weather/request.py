@@ -77,6 +77,9 @@ ALLOWED_STEPS = set(list(range(0, 90)) + list(range(90, 144, 3)) + list(range(14
 class Area:
     Slovenia = [46.53, 13.23, 45.25, 16.36]
 
+# Visibility and percipitation type are not available before mid 2015
+AFTER_2015_PARAMS = "20.3/134.128/141.128/144.128/164.128/165.128/166.128/167.128/168.128/176.128/189.128/228.128/260015"
+BEFORE_2015_PARAMS = "134.128/141.128/144.128/164.128/165.128/166.128/167.128/168.128/176.128/189.128/228.128"
 
 class WeatherReq():
     """
@@ -132,7 +135,7 @@ class WeatherReq():
             "expver": "1",
             "type": "fc",
             "levtype": "sfc",
-            "param": "134.128/141.128/144.128/164.128/165.128/166.128/167.128/168.128/176.128/189.128/228.128"
+            "param": AFTER_2015_PARAMS
         }
 
     def __str__(self):
