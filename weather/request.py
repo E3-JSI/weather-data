@@ -1,7 +1,24 @@
 from __future__ import print_function
-
-import ecmwfapi
 from datetime import date
+import json
+
+class OwmServer:
+    def __init__(self, api_key):
+        self.api_key = api_key
+    
+    def retrieve(self, params, target):
+        import requests
+    
+        params['APPID'] = self.api_key
+        r = requests.get('http://api.openweathermap.org/data/2.5/forecast', params=params)
+        
+        r = r.json()
+        if str(r['cod']) != "200":
+            raise RuntimeError('OpenWeatherMaps request failed (', r['cod'], 'with message: ', r['message'])
+        
+        with open(target, 'w') as f:
+            f.write(json.dumps(r))
+  
 class EcmwfServer():
     """
         Connection to the ECMWF server.
@@ -12,6 +29,7 @@ class EcmwfServer():
         """
             Set up a connection to the MARS data service.
         """
+        import ecmwfapi
         self.service = ecmwfapi.ECMWFService('mars')
 
     def _check_target(self, target):
@@ -139,7 +157,7 @@ class WeatherReq():
         }
 
     def __str__(self):
-        """Strig representation of the request is simply the representation of its parameters."""
+        """String representation of the request is simply the representation of its parameters."""
         max_k = max(len(key) for key in self.params.keys())
         template = "{:%d} : {}" % max_k
 
