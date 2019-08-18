@@ -25,12 +25,15 @@ class EcmwfServer():
         Assumes a valid .ecmwfapirc file is present in the same folder as the code.
     """
 
-    def __init__(self):
+    def __init__(self, key=None, email=None):
         """
             Set up a connection to the MARS data service.
         """
         import ecmwfapi
-        self.service = ecmwfapi.ECMWFService('mars')
+        if key is not None and email is not None:
+            self.service = ecmwfapi.ECMWFService('mars', key=key, email=email)
+        else:
+            self.service = ecmwfapi.ECMWFService('mars')
 
     def _check_target(self, target):
         """Check if target file is ok."""

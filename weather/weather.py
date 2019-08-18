@@ -183,12 +183,14 @@ class WeatherExtractor:
             
             __add_msg('2t', msg['main']['temp'], validityDateTime)
             __add_msg('rh', msg['main']['humidity'] / 100.0, validityDateTime)
+            __add_msg('sp', msg['main']['grnd_level'] / 100.0, validityDateTime)
             __add_msg('tcc', msg['clouds']['all'] / 100.0 if 'clouds' in msg else 0.0, validityDateTime)
             __add_msg('ws', msg['wind']['speed'] if 'wind' in msg else 0.0, validityDateTime)
             if 'rain' in msg:
                 tp_acc += msg['rain']['3h'] / 1000.0 # in [mm] originally
             __add_msg('tp', tp_acc, validityDateTime)
             __add_msg('sf', msg['show']['3h'] / 100.0 if 'snow' in msg else 0.0, validityDateTime)
+            
         return pd.DataFrame.from_dict(grib_messages)
 
     def load(self, filepaths, format=None):
@@ -850,7 +852,7 @@ class WeatherApi:
         $ wa = WeatherApi()
     """
 
-    def __init__(self, source, api_key=None):
+    def __init__(self, source, key=None, email=None):
         """
         Args:
             source (str): 'owm' for OpenWeatherMaps or 'ecmwf' 
@@ -859,13 +861,13 @@ class WeatherApi:
         
         self.source = source
         if source == 'ecmwf':
-            from .request import EcmwfServer, WeatherReq
-            self.server = EcmwfServer()
+            from .request import EcmwfServer
+            self.server = EcmwfServer(key=key, email=email)
         elif source == 'owm':
             from .request import OwmServer
-            if api_key is None:
+            if key is None:
                 raise ValueError('API key for OpenWeatherMaps has to be specified via "api_key" argument')
-            self.server = OwmServer(api_key=api_key)
+            self.server = OwmServer(api_key=key)
 
     def get(self, target, from_date=None, to_date=None, base_time='midnight', steps=None, area=None, grid=(0.25, 0.25),
         city_name=None, city_id=None, latlon=None):
@@ -889,6 +891,8 @@ class WeatherApi:
         assert base_time in ['midnight', 'noon']
         
         if self.source == 'ecmwf':
+            from .request import WeatherReq
+
             # create new request
             req = WeatherReq()
 
