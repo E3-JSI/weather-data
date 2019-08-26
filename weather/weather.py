@@ -167,7 +167,7 @@ class WeatherExtractor:
             grib_messages.append({
                 'shortName': name,
                 'values': np.array([value]),
-                'validDateTime': validDateTime,
+                'validDateTime': pd.to_datetime(validDateTime.date()),
                 'validityDateTime': validityDateTime,
                 'lats': lats,
                 'lons': lons,
@@ -186,7 +186,7 @@ class WeatherExtractor:
             __add_msg('sp', msg['main']['grnd_level'] / 100.0, validityDateTime)
             __add_msg('tcc', msg['clouds']['all'] / 100.0 if 'clouds' in msg else 0.0, validityDateTime)
             __add_msg('ws', msg['wind']['speed'] if 'wind' in msg else 0.0, validityDateTime)
-            if 'rain' in msg:
+            if 'rain' in msg and '3h' in msg['rain']:
                 tp_acc += msg['rain']['3h'] / 1000.0 # in [mm] originally
             __add_msg('tp', tp_acc, validityDateTime)
             __add_msg('sf', msg['show']['3h'] / 100.0 if 'snow' in msg else 0.0, validityDateTime)
