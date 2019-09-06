@@ -12,18 +12,15 @@ Example:
 Todo:
     * add interpolation capability to WeatherExtractor._aggregate_points
 """
+from __future__ import print_function
 import datetime
+import math
 import json
-import cPickle as pickle
+import pickle
 from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-
-import ecmwfapi
-import pygrib
-
-from .request import Area, EcmwfServer, WeatherReq
 
 """
     Best estimation for actual weather is forecast with a base date on the current day.
@@ -38,7 +35,6 @@ from .request import Area, EcmwfServer, WeatherReq
     Snow depth                          sd
     Snow fall                           sf
     Sunshine duration*                  sund
-    Surface net solar radiation         ssr
     Surface pressure                    sp
     Total cloud cover                   tcc
     Total precipitation*                tp
@@ -63,8 +59,6 @@ from .request import Area, EcmwfServer, WeatherReq
     Warning:
         * after 2015-5-13 number of parameters changes
 """
-
-
 class WeatherExtractor:
     """
     Interface for extracting weather data from pre-downloaded GRIB file.
@@ -104,30 +98,39 @@ class WeatherExtractor:
     def __init__(self):
         self.grib_msgs = None
 
-    def load(self, filepaths):
-        """
-        Load weather data from grib file obtained via API request or from
-        the pickled pandas.DataFrame.
+    def _load_from_grib(self, filepath, grib_reader):
+        """ Load measurements from GRIB file. """
+        # load grib messages
+        grib_messages = []
+        lats, lons = None, None
 
-        Arguments:
-            filepaths (list): list of paths to files containing weather data
+        if grib_reader[1] == 'eccodes':
+            grbs = grib_reader[0](filepath)
+            for i in range(len(grbs)):
+                grib_msg = grbs.next()
 
-        Warning:
-            after 2015-5-13 number of parameters increases from 11 to 15 and
-            additional parameter 'ptype' which disturbs the indexing
-            (because of inconsistent 'validDateTime') sneaks in
-        """
+                if lats is None:
+                    lats = grib_msg['latitudes'].flatten()
+                    lons = grib_msg['longitudes'].flatten()
 
-        def _load_from_grib(filepath, append=False):
-            """ Load measurements from GRIB file. """
-            grbs = pygrib.open(filepath)
-
-            # load grib messages
-            grib_messages = []
-
+                grib_messages.append({
+                    'shortName': grib_msg['shortName'],
+                    'values': grib_msg['values'].flatten(),
+                    'validDateTime': WeatherExtractor._str_to_datetime(
+                        str(grib_msg['date']) + str(grib_msg['time'])),
+                    'validityDateTime': WeatherExtractor._str_to_datetime(
+                        str(grib_msg['validityDate']) + str(grib_msg['validityTime'])),
+                    'lats': lats,
+                    'lons': lons,
+                    'type': grib_msg['marsType']  # forecast or actual
+                })
+            grbs.close()
+        else:
+            grbs = grib_reader[0](filepath)
+        
             lats, lons = grbs.message(1).latlons()
             lats, lons = lats.flatten(), lons.flatten()
-
+            
             grbs.rewind()
             for grib_msg in grbs:
                 grib_messages.append({
@@ -141,24 +144,109 @@ class WeatherExtractor:
                     'type': grib_msg.marsType  # forecast or actual
                 })
             grbs.close()
-            return pd.DataFrame.from_dict(grib_messages)
+        return pd.DataFrame.from_dict(grib_messages)
 
-        def _load_from_pkl(filepath, append=False):
-            """ Load pandas.DataFrame containing measurements. """
-            with open(filepath, 'rb') as f:
-                return pickle.load(f)
+    def _load_from_pkl(self, filepath):
+        """ Load already processed pandas.DataFrame. """
+        with open(filepath, 'rb') as f:
+            return pickle.load(f)
 
+    def _load_from_owmjson(self, filepath):
+        """ Load measurements from OpenWeatherMap json response. """
+        # Convert to the same 'grib messages' format as ecmwf data
+        grib_messages = []
+        
+        with open(filepath, 'r') as f:
+            d = json.loads(f.read())
+        
+        lats = [d['city']['coord']['lat']]
+        lons = [d['city']['coord']['lon']]
+        validDateTime = pd.to_datetime(d['list'][0]['dt_txt'])
+
+        def __add_msg(name, value, validityDateTime):
+            grib_messages.append({
+                'shortName': name,
+                'values': np.array([value]),
+                'validDateTime': pd.to_datetime(validDateTime.date()),
+                'validityDateTime': validityDateTime,
+                'lats': lats,
+                'lons': lons,
+                'type': 'fc'
+            })
+
+        # Total precipitation is accumulated parameter in ECMWF (in [m])
+        # make it accumulated also for OWM
+        tp_acc = 0.0
+
+        for msg in d['list']:
+            validityDateTime = pd.to_datetime(msg['dt_txt'])
+            
+            __add_msg('2t', msg['main']['temp'], validityDateTime)
+            __add_msg('rh', msg['main']['humidity'] / 100.0, validityDateTime)
+            __add_msg('sp', msg['main']['grnd_level'] / 100.0, validityDateTime)
+            __add_msg('tcc', msg['clouds']['all'] / 100.0 if 'clouds' in msg else 0.0, validityDateTime)
+            __add_msg('ws', msg['wind']['speed'] if 'wind' in msg else 0.0, validityDateTime)
+            if 'rain' in msg and '3h' in msg['rain']:
+                tp_acc += msg['rain']['3h'] / 1000.0 # in [mm] originally
+            __add_msg('tp', tp_acc, validityDateTime)
+            __add_msg('sf', msg['show']['3h'] / 100.0 if 'snow' in msg else 0.0, validityDateTime)
+            
+        return pd.DataFrame.from_dict(grib_messages)
+
+    def load(self, filepaths, format=None):
+        """
+        Load weather data from grib file obtained via API request or from
+        the pickled pandas.DataFrame.
+
+        Arguments:
+            filepaths (list): list of paths to files containing weather data
+            format (str): one of the following:
+                'grib': files are stored in grib format
+                'pkl': files are stored in binary form (pickled)
+                'owm': files are stored in OpenWeatherMap json format
+
+                if format is not specified it is automatically inferred from file prefix
+                (.grib, .pkl or .json)
+        
+        Warning:
+            after 2015-5-13 number of parameters increases from 11 to 15 and
+            additional parameter 'ptype' which disturbs the indexing
+            (because of inconsistent 'validDateTime') sneaks in
+        """
         if not isinstance(filepaths, list):
             filepaths = [filepaths]  # wrap in list
+        
+        grib_reader = None
+        if format is None:
+            if all(f.endswith('.grib') for f in filepaths):
+                format = 'grib'
+
+                try:
+                    import eccodes
+                    grib_reader = (eccodes.GribFile, 'eccodes')
+                except ImportError:
+                    import pygrib
+                    grib_reader = (pygrib.open, 'pygrib')
+                print('Using ', grib_reader[1], ' as GRIB decoder.')
+
+            elif all(f.endswith('.pkl') for f in filepaths):
+                format = 'pkl'
+            elif all(f.endswith('.json') for f in filepaths):
+                format = 'owm'
+            else:
+                raise ValueError("Could not infer the file format.")
 
         for filepath in filepaths:
             curr_msgs = None
-            if filepath.endswith('.grib'):
-                curr_msgs = _load_from_grib(filepath, append=True)
-            elif filepath.endswith('.pkl'):
-                curr_msgs = _load_from_pkl(filepath, append=True)
+
+            if format == 'grib':
+                curr_msgs = self._load_from_grib(filepath, grib_reader)
+            elif format == 'pkl':
+                curr_msgs = self._load_from_pkl(filepath)
+            elif format == 'owm':
+                curr_msgs = self._load_from_owmjson(filepath)
             else:
-                raise Exception("File format not recognized")
+                raise ValueError("Format %s not recognized" % format)
 
             # append messages
             if self.grib_msgs is None:
@@ -169,8 +257,9 @@ class WeatherExtractor:
             # reset index
             self.grib_msgs.reset_index(drop=True, inplace=True)
 
-        # extend the set of parameters
-        self.grib_msgs = WeatherExtractor._extend_parameters(self.grib_msgs)
+        # extend the set of parameters if data is from grib files
+        if format == 'grib':
+            self.grib_msgs = WeatherExtractor._extend_parameters(self.grib_msgs)
 
         # index by base date (date when the forecast was made)
         self.grib_msgs.set_index('validDateTime', drop=False, inplace=True)
@@ -179,7 +268,7 @@ class WeatherExtractor:
     def store(self, filepath):
         if not filepath.endswith('.pkl'):
             filepath += '.pkl'
-        print "Saving weather data to: %s" % filepath
+        print("Saving weather data to: %s" % filepath)
         with open(filepath, 'wb') as f:
             pickle.dump(self.grib_msgs, f)
 
@@ -188,7 +277,7 @@ class WeatherExtractor:
         """ Extend the set of weather parameters with ones calculated
         from base parameters.
         """
-        print "Extending parameters..."
+        print("Extending parameters...")
         curr_params = np.unique(grib_msgs.shortName)
         # calculate Wind speed [ws] parameter
         if ('10u' in curr_params) and '10v' in curr_params and not 'ws' in curr_params:
@@ -266,10 +355,10 @@ class WeatherExtractor:
         num_target = target_lats.shape[0]
 
         closest = np.zeros(num_points, dtype=np.int)
-        for i in xrange(num_points):
+        for i in range(num_points):
             best_dist = (lats[i] - target_lats[0])**2 + \
                 (lons[i] - target_lons[0])**2
-            for j in xrange(1, num_target):
+            for j in range(1, num_target):
                 curr_dist = (lats[i] - target_lats[j])**2 + \
                     (lons[i] - target_lons[j])**2
                 if curr_dist < best_dist:
@@ -294,11 +383,11 @@ class WeatherExtractor:
         # get interpolated values
         result_values = np.zeros(num_targets)
         if aggtype == 'one':
-            for i in xrange(num_targets):
+            for i in range(num_targets):
                 result_values[i] = values[closest[i]]
         elif aggtype == 'mean':
             result_count = np.zeros(num_targets)
-            for i in xrange(num_original):
+            for i in range(num_original):
                 result_values[closest[i]] += values[i]
                 result_count[closest[i]] += 1.
             result_count[result_count == 0] = 1.  # avoid dividing by zero
@@ -614,6 +703,39 @@ class WeatherExtractor:
         rf.sort_values(by=['timestamp', 'region'], inplace=True)
         rf.to_csv(filename, sep='\t', index=False)
 
+    def export_db(self, filename):
+        """
+        Export weather features to tsv file in MariaDB format.
+
+        Args:
+            filename (str): name of target file
+        Returns:
+            pandas.DataFrame: resulting object with weather measurements
+        """
+        # weather features frame
+        df = self.grib_msgs
+
+        def f(group):
+            item = group.iloc[0]
+            n = len(item.lats)
+
+            offset = math.trunc((item.validityDateTime - item.validDateTime).total_seconds() / 3600.0)
+            new_columns = {
+                'date': [item.validDateTime] * n,
+                'offset': [offset] * n,
+                'latitude': list(item.lats),
+                'longitude': list(item.lons)
+            }
+
+            for param_name, param_group in group.groupby('shortName'):
+                new_columns[param_name] = param_group.iloc[0]['values']
+
+            return pd.DataFrame(new_columns)
+
+        df = df.groupby(['validDateTime', 'validityDateTime'], as_index=False).apply(f)
+        df.sort_values(by=['date', 'offset'], inplace=True)
+        df.to_csv(filename, sep='\t', index=False)
+
     def export(self, filename, interp_points, weather_params='all', forecast_offsets='all', regions='all'):
         """
         Export weather features for each date from dates to .tsv file.
@@ -677,14 +799,14 @@ class WeatherExtractor:
                     for from_hour, to_hour in [(0, 6), (6, 12), (12, 18), (6, 18)]:
                         cum_from = pdf.loc[datetime.time(from_hour):datetime.time(from_hour)]
                         if len(cum_from) == 0:
-                            print "base_date: ", base_date, " curr_date: ", curr_date, " param_name: ", param_name, " at: ", from_hour, " missing!"
+                            print("base_date: ", base_date, " curr_date: ", curr_date, " param_name: ", param_name, " at: ", from_hour, " missing!")
                             continue
                         else:
                             cum_from = cum_from.iloc[0]['values']
 
                         cum_to = pdf.loc[datetime.time(to_hour):datetime.time(to_hour)]
                         if len(cum_to) == 0:
-                            print "base_date: ", base_date, " curr_date: ", curr_date, " param_name: ", param_name, " at: ", from_hour, " missing!"
+                            print("base_date: ", base_date, " curr_date: ", curr_date, " param_name: ", param_name, " at: ", from_hour, " missing!")
                             continue
                         else:
                             cum_to = cum_to.iloc[0]['values']
@@ -730,63 +852,104 @@ class WeatherApi:
         $ wa = WeatherApi()
     """
 
-    def __init__(self):
-        self.server = EcmwfServer()
-
-    def get(self, from_date, to_date, target, base_time='midnight', steps=None, area='slovenia', grid=(0.25, 0.25)):
+    def __init__(self, source, key=None, email=None):
         """
-        Execute a MARS request with given parameters and store the result to file 'target.grib'.
+        Args:
+            source (str): 'owm' for OpenWeatherMaps or 'ecmwf' 
+        """
+        assert source in ['ecmwf', 'owm']
+        
+        self.source = source
+        if source == 'ecmwf':
+            from .request import EcmwfServer
+            self.server = EcmwfServer(key=key, email=email)
+        elif source == 'owm':
+            from .request import OwmServer
+            if key is None:
+                raise ValueError('API key for OpenWeatherMaps has to be specified via "api_key" argument')
+            self.server = OwmServer(api_key=key)
+
+    def get(self, target, from_date=None, to_date=None, base_time='midnight', steps=None, area=None, grid=(0.25, 0.25),
+        city_name=None, city_id=None, latlon=None):
+        """
+        Execute a request with given parameters and store the result to 'target' file.
 
         Args:
+            from_date (datetime.date): first base date of the forecast, default value is TODAY 
+            to_date (datetime.date): last base date of the forecast, default value equals 'from_date'
             base_time (str): 'midnight' or 'noon'
+            area: grid area for ECMWF query
+            city_id: id of the city for OpenWeatherMaps query (https://openweathermap.org/forecast5)
+            lonlat: longitude and latitude for OpenWeatherMaps query
         """
-        assert isinstance(from_date, datetime.date)
-        assert isinstance(to_date, datetime.date)
-        assert from_date <= to_date
-
+        assert isinstance(from_date, datetime.date) or from_date is None
+        if from_date is None: 
+            from_date = datetime.date.today()
+        assert isinstance(to_date, datetime.date) or to_date is None
+        if to_date is not None:
+            assert from_date <= to_date
         assert base_time in ['midnight', 'noon']
+        
+        if self.source == 'ecmwf':
+            from .request import WeatherReq
 
-        # create new mars request
-        req = WeatherReq()
+            # create new request
+            req = WeatherReq()
 
-        # set date
-        req.set_date(from_date, end_date=to_date)
+            # set date
+            req.set_date(from_date, end_date=to_date)
 
-        # set target grib file
-        req.set_target(target)
+            # set target grib file
+            req.set_target(target)
 
-        # set base time
-        if base_time == 'midnight':
-            req.set_midnight()
+            # set base time
+            if base_time == 'midnight':
+                req.set_midnight()
+            else:
+                req.set_noon()
+
+            if steps is None:
+                # assume base time is 'midnight'
+                # base_date is the date the forecast was made
+                steps = []
+
+                # current day + next three days
+                for day_off in range(4):
+                    steps += [day_off * 24 +
+                                hour_off for hour_off in [0, 3, 6, 9, 12, 15, 18, 21]]
+
+                # other 4 days
+                for day_off in range(4, 8):
+                    steps += [day_off * 24 +
+                                hour_off for hour_off in [0, 6, 12, 18]]
+
+                if base_time == 'noon':
+                    steps = [step for step in steps in step - 12 >= 0]
+
+            req.set_step(steps)
+
+            if area is None:
+                raise ValueError('No area is specified for ECMWF query.')
+            req.set_area(area)
+        
+            # set grid resolution
+            req.set_grid(grid)
+
+            self.server.retrieve(req)
+
+        elif self.source == 'owm':
+            params = {}
+            if sum(x is not None for x in [city_name, city_id, latlon]) != 1:
+                raise ValueError('Exactly one of the fields city_name, city_id and lonlat needs to be specified.')
+            
+            if city_name is not None:
+                params['q'] = city_name
+            elif city_id is not None:
+                params['id'] = city_id
+            elif latlon is not None:
+                params['lat'] = latlon[0]
+                params['lon'] = latlon[1]
+            
+            self.server.retrieve(params, target)
         else:
-            req.set_noon()
-
-        if steps is None:
-            # assume base time is 'midnight'
-            # base_date is the date the forecast was made
-            steps = []
-
-            # current day + next three days
-            for day_off in range(4):
-                steps += [day_off * 24 +
-                            hour_off for hour_off in [0, 3, 6, 9, 12, 15, 18, 21]]
-
-            # other 4 days
-            for day_off in range(4, 8):
-                steps += [day_off * 24 +
-                            hour_off for hour_off in [0, 6, 12, 18]]
-
-            if base_time == 'noon':
-                steps = [step for step in steps in step - 12 >= 0]
-
-        req.set_step(steps)
-
-        # set area
-        if area == 'slovenia':
-            area = Area.Slovenia
-        req.set_area(area)
-
-        # set grid resolution
-        req.set_grid(grid)
-
-        self.server.retrieve(req)
+            raise ValueError('Invalid weather source: %s' % self.source)

@@ -1,18 +1,39 @@
-import ecmwfapi
+from __future__ import print_function
 from datetime import date
+import json
 
-
+class OwmServer:
+    def __init__(self, api_key):
+        self.api_key = api_key
+    
+    def retrieve(self, params, target):
+        import requests
+    
+        params['APPID'] = self.api_key
+        r = requests.get('http://api.openweathermap.org/data/2.5/forecast', params=params)
+        
+        r = r.json()
+        if str(r['cod']) != "200":
+            raise RuntimeError('OpenWeatherMaps request failed (', r['cod'], 'with message: ', r['message'])
+        
+        with open(target, 'w') as f:
+            f.write(json.dumps(r))
+  
 class EcmwfServer():
     """
         Connection to the ECMWF server.
         Assumes a valid .ecmwfapirc file is present in the same folder as the code.
     """
 
-    def __init__(self):
+    def __init__(self, key=None, email=None):
         """
             Set up a connection to the MARS data service.
         """
-        self.service = ecmwfapi.ECMWFService('mars')
+        import ecmwfapi
+        if key is not None and email is not None:
+            self.service = ecmwfapi.ECMWFService('mars', key=key, email=email)
+        else:
+            self.service = ecmwfapi.ECMWFService('mars')
 
     def _check_target(self, target):
         """Check if target file is ok."""
@@ -44,9 +65,9 @@ class EcmwfServer():
 
         # print the stats
         with open(target) as infile:
-            print "=== request info ==="
-            print infile.read()
-            print "===================="
+            print("=== request info ===")
+            print(infile.read())
+            print("====================")
 
     def retrieve(self, request):
         """
@@ -67,7 +88,7 @@ class EcmwfServer():
 
 
 # the set of allowed steps in the request
-ALLOWED_STEPS = set(range(0, 90) + range(90, 144, 3) + range(144, 246, 6))
+ALLOWED_STEPS = set(list(range(0, 90)) + list(range(90, 144, 3)) + list(range(144, 246, 6)))
 
 """
     Bounding boxes in [maxLat, minLon, minLat, maxLon] format.
@@ -77,6 +98,9 @@ ALLOWED_STEPS = set(range(0, 90) + range(90, 144, 3) + range(144, 246, 6))
 class Area:
     Slovenia = [46.53, 13.23, 45.25, 16.36]
 
+# Visibility and percipitation type are not available before mid 2015
+AFTER_2015_PARAMS = "20.3/134.128/141.128/144.128/164.128/165.128/166.128/167.128/168.128/176.128/189.128/228.128/260015"
+BEFORE_2015_PARAMS = "134.128/141.128/144.128/164.128/165.128/166.128/167.128/168.128/176.128/189.128/228.128"
 
 class WeatherReq():
     """
@@ -132,11 +156,11 @@ class WeatherReq():
             "expver": "1",
             "type": "fc",
             "levtype": "sfc",
-            "param": "20.3/134.128/141.128/144.128/164.128/165.128/166.128/167.128/168.128/176.128/189.128/228.128/260015"
+            "param": AFTER_2015_PARAMS
         }
 
     def __str__(self):
-        """Strig representation of the request is simply the representation of its parameters."""
+        """String representation of the request is simply the representation of its parameters."""
         max_k = max(len(key) for key in self.params.keys())
         template = "{:%d} : {}" % max_k
 
