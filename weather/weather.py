@@ -189,7 +189,7 @@ class WeatherExtractor:
             if 'rain' in msg and '3h' in msg['rain']:
                 tp_acc += msg['rain']['3h'] / 1000.0 # in [mm] originally
             __add_msg('tp', tp_acc, validityDateTime)
-            __add_msg('sf', msg['show']['3h'] / 100.0 if 'snow' in msg else 0.0, validityDateTime)
+            __add_msg('sf', msg['snow']['3h'] / 100.0 if 'snow' in msg else 0.0, validityDateTime)
             
         return pd.DataFrame.from_dict(grib_messages)
 
